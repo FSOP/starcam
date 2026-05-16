@@ -1,0 +1,6 @@
+photos/
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.log

@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>StarCam</title>
+  <style>
+    :root {
+      --bg: #0a0c14;
+      --surface: #12152a;
+      --surface2: #1a1f38;
+      --accent: #4a7fff;
+      --accent2: #7b4fff;
+      --text: #dde2ff;
+      --text-dim: #5a6080;
+      --ok: #3ddc84;
+      --warn: #ffb347;
+      --err: #ff4d6d;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      padding: 10px 14px 0;
+      flex-shrink: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .logo { font-size: 16px; font-weight: 700; letter-spacing: 3px; color: var(--text); }
+    .photo-count { font-size: 11px; color: var(--text-dim); }
+
+    /* ── Status chips ── */
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; padding-bottom: 10px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; padding: 3px 9px; border-radius: 20px;
+      background: var(--surface2); color: var(--text-dim);
+      white-space: nowrap;
+    }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+    .chip.ok .dot  { background: var(--ok); }
+    .chip.warn .dot{ background: var(--warn); }
+    .chip.err .dot { background: var(--err); }
+    /* GPS-specific states */
+    .chip.gps-fix  .dot { background: var(--ok); }
+    .chip.gps-conn .dot { background: var(--warn); }
+    .chip.gps-none .dot { background: var(--text-dim); }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; background: var(--surface); flex-shrink: 0; }
+    .tab {
+      flex: 1; padding: 10px; text-align: center; font-size: 13px;
+      color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent;
+      transition: color .2s, border-color .2s;
+    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ── Tab content ── */
+    .panels { flex: 1; overflow: hidden; position: relative; }
+    .panel {
+      display: none; position: absolute; inset: 0;
+      overflow-y: auto; overflow-x: hidden;
+      padding: 14px; gap: 12px; flex-direction: column;
+    }
+    .panel.active { display: flex; }
+
+    /* ── Preview ── */
+    .preview-wrap {
+      position: relative; background: #000;
+      border-radius: 12px; overflow: hidden; aspect-ratio: 4/3;
+      flex-shrink: 0;
+    }
+    .preview-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .preview-overlay {
+      position: absolute; inset: 0; display: none;
+      align-items: center; justify-content: center;
+      background: rgba(0,0,0,.75); flex-direction: column; gap: 10px;
+    }
+    .preview-overlay.show { display: flex; }
+    .overlay-msg { font-size: 15px; color: var(--text); }
+
+    /* ── Progress bar ── */
+    .progress { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; display: none; }
+    .progress.show { display: block; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0; transition: width .4s; }
+
+    /* ── Settings ── */
+    .settings {
+      background: var(--surface); border-radius: 12px; padding: 14px;
+    }
+    .row { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
+    .row:last-child { margin-bottom: 0; }
+    .lbl { font-size: 12px; color: var(--text-dim); width: 68px; flex-shrink: 0; }
+    .val { font-size: 13px; color: var(--accent); width: 48px; text-align: right; flex-shrink: 0; }
+    input[type=range] {
+      flex: 1; -webkit-appearance: none; appearance: none;
+      background: var(--surface2); height: 4px; border-radius: 2px; outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 20px; height: 20px;
+      border-radius: 50%; background: var(--accent); cursor: pointer;
+    }
+    select {
+      flex: 1; background: var(--surface2); color: var(--text);
+      border: none; padding: 7px 8px; border-radius: 7px; font-size: 13px;
+    }
+
+    /* ── Capture button ── */
+    .capture-btn {
+      width: 100%; padding: 16px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff; border: none; border-radius: 12px;
+      font-size: 16px; font-weight: 700; letter-spacing: 2px;
+      cursor: pointer; transition: opacity .2s; flex-shrink: 0;
+    }
+    .capture-btn:active { opacity: .8; }
+    .capture-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* ── Gallery ── */
+    .gallery-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .g-item {
+      position: relative; aspect-ratio: 4/3;
+      background: var(--surface); border-radius: 8px; overflow: hidden; cursor: pointer;
+    }
+    .g-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .g-item .g-info {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: rgba(0,0,0,.65); padding: 3px 6px; font-size: 10px; color: var(--text-dim);
+    }
+    .gps-badge {
+      position: absolute; top: 5px; right: 5px;
+      background: rgba(61,220,132,.85); color: #000;
+      font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 4px;
+    }
+    .empty { color: var(--text-dim); font-size: 13px; padding: 24px; text-align: center; }
+
+    /* ── Modal ── */
+    .modal {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,.97); flex-direction: column;
+    }
+    .modal.open { display: flex; }
+    .modal-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px; flex-shrink: 0;
+    }
+    .modal-fname { font-size: 12px; color: var(--text-dim); word-break: break-all; }
+    .modal-close {
+      background: none; border: none; color: var(--text);
+      font-size: 26px; line-height: 1; cursor: pointer; padding: 0 4px;
+    }
+    .modal-img { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .modal-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .modal-gps {
+      padding: 8px 16px; background: var(--surface); font-size: 12px;
+      color: var(--text-dim); flex-shrink: 0; display: none;
+    }
+    .modal-gps.show { display: block; }
+    .modal-actions { display: flex; gap: 8px; padding: 14px 16px; flex-shrink: 0; }
+    .btn { flex: 1; padding: 13px; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .btn-dl   { background: var(--accent);  color: #fff; }
+    .btn-del  { background: var(--err);     color: #fff; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+      background: var(--surface2); color: var(--text);
+      padding: 10px 22px; border-radius: 22px; font-size: 13px;
+      z-index: 200; opacity: 0; transition: opacity .3s; white-space: nowrap;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <span class="logo">★ STARCAM</span>
+    <span class="photo-count" id="ph-count"></span>
+  </div>
+  <div class="chips">
+    <span class="chip" id="chip-cam"><span class="dot"></span><span id="lbl-cam">카메라</span></span>
+    <span class="chip gps-none" id="chip-gps"><span class="dot"></span><span id="lbl-gps">GPS 없음</span></span>
+    <span class="chip" id="chip-temp"><span class="dot"></span><span id="lbl-temp">--°C</span></span>
+    <span class="chip" id="chip-disk"><span class="dot"></span><span id="lbl-disk">디스크</span></span>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" id="tab-btn-capture" onclick="switchTab('capture')">촬영</div>
+  <div class="tab" id="tab-btn-gallery" onclick="switchTab('gallery')">갤러리</div>
+</div>
+
+<div class="panels">
+
+  <!-- 촬영 패널 -->
+  <div class="panel active" id="panel-capture">
+    <div class="preview-wrap">
+      <img id="preview" src="/stream" alt="미리보기" onerror="handleStreamError()">
+      <div class="preview-overlay" id="overlay">
+        <span class="overlay-msg" id="overlay-msg">촬영 중...</span>
+      </div>
+    </div>
+
+    <div class="progress" id="progress"><div class="progress-fill" id="progress-fill"></div></div>
+
+    <div class="settings">
+      <div class="row">
+        <span class="lbl">노출 (초)</span>
+        <input type="range" id="s-shutter" min="0.5" max="60" step="0.5" value="2"
+               oninput="updateVal('shutter', this.value+'s')">
+        <span class="val" id="v-shutter">2s</span>
+      </div>
+      <div class="row">
+        <span class="lbl">게인</span>
+        <input type="range" id="s-gain" min="1" max="16" step="0.5" value="1"
+               oninput="updateVal('gain', this.value)">
+        <span class="val" id="v-gain">1</span>
+      </div>
+      <div class="row">
+        <span class="lbl">화이트밸런스</span>
+        <select id="s-awb">
+          <option value="auto">자동</option>
+          <option value="incandescent">백열등</option>
+          <option value="tungsten">텅스텐</option>
+          <option value="fluorescent">형광등</option>
+          <option value="indoor">실내</option>
+          <option value="daylight">주광</option>
+          <option value="cloudy">흐림</option>
+        </select>
+      </div>
+      <div class="row">
+        <span class="lbl">연속 장수</span>
+        <input type="range" id="s-count" min="1" max="20" step="1" value="1"
+               oninput="updateVal('count', this.value+'장')">
+        <span class="val" id="v-count">1장</span>
+      </div>
+      <div class="row">
+        <span class="lbl">간격 (초)</span>
+        <input type="range" id="s-interval" min="1" max="60" step="1" value="3"
+               oninput="updateVal('interval', this.value+'s')">
+        <span class="val" id="v-interval">3s</span>
+      </div>
+    </div>
+
+    <button class="capture-btn" id="capture-btn" onclick="doCapture()">★ 촬영</button>
+  </div>
+
+  <!-- 갤러리 패널 -->
+  <div class="panel" id="panel-gallery">
+    <div class="gallery-grid" id="gallery-grid"></div>
+  </div>
+
+</div>
+
+<!-- 전체화면 모달 -->
+<div class="modal" id="modal">
+  <div class="modal-hdr">
+    <span class="modal-fname" id="modal-fname"></span>
+    <button class="modal-close" onclick="closeModal()">✕</button>
+  </div>
+  <div class="modal-img"><img id="modal-img" src="" alt=""></div>
+  <div class="modal-gps" id="modal-gps"></div>
+  <div class="modal-actions">
+    <button class="btn btn-dl" onclick="downloadPhoto()">다운로드</button>
+    <button class="btn btn-del" onclick="deletePhoto()">삭제</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  let currentPhoto = null;
+  let busy = false;
+
+  /* ── Helpers ── */
+  function updateVal(key, txt) {
+    document.getElementById('v-' + key).textContent = txt;
+  }
+
+  function showToast(msg, dur = 3000) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), dur);
+  }
+
+  function handleStreamError() {
+    const img = document.getElementById('preview');
+    setTimeout(() => { img.src = '/stream?' + Date.now(); }, 3000);
+  }
+
+  /* ── Tab ── */
+  function switchTab(name) {
+    ['capture', 'gallery'].forEach(n => {
+      document.getElementById('tab-btn-' + n).classList.toggle('active', n === name);
+      document.getElementById('panel-' + n).classList.toggle('active', n === name);
+    });
+    if (name === 'gallery') loadGallery();
+  }
+
+  /* ── Status ── */
+  async function fetchStatus() {
+    try {
+      const r = await fetch('/api/status');
+      const s = await r.json();
+
+      // Camera
+      const cc = document.getElementById('chip-cam');
+      document.getElementById('lbl-cam').textContent = s.camera_connected ? '카메라 연결됨' : '카메라 없음';
+      cc.className = 'chip ' + (s.camera_connected ? 'ok' : 'err');
+
+      // GPS
+      const gc = document.getElementById('chip-gps');
+      let gCls = 'gps-none', gTxt = 'GPS 없음';
+      if (s.gps_fix) {
+        gCls = 'gps-fix';
+        const lat = s.latitude != null ? s.latitude.toFixed(4) : '?';
+        const lon = s.longitude != null ? s.longitude.toFixed(4) : '?';
+        gTxt = `GPS ${lat}, ${lon}`;
+        if (s.satellites) gTxt += ` (위성 ${s.satellites})`;
+      } else if (s.gps_connected) {
+        gCls = 'gps-conn';
+        gTxt = 'GPS 신호 탐색중';
+      }
+      gc.className = 'chip ' + gCls;
+      document.getElementById('lbl-gps').textContent = gTxt;
+
+      // Temp
+      const tc = document.getElementById('chip-temp');
+      const temp = s.cpu_temp;
+      document.getElementById('lbl-temp').textContent = temp != null ? temp.toFixed(1) + '°C' : '--°C';
+      tc.className = 'chip ' + (temp > 70 ? 'err' : temp > 60 ? 'warn' : 'ok');
+
+      // Disk
+      const dc = document.getElementById('chip-disk');
+      document.getElementById('lbl-disk').textContent = (s.disk_free || '--') + ' 여유';
+      dc.className = 'chip ' + (s.disk_percent > 90 ? 'err' : s.disk_percent > 75 ? 'warn' : 'ok');
+
+      // Photo count
+      document.getElementById('ph-count').textContent = `사진 ${s.photo_count || 0}장`;
+    } catch (_) {}
+  }
+
+  /* ── Capture ── */
+  async function doCapture() {
+    if (busy) return;
+    busy = true;
+
+    const btn = document.getElementById('capture-btn');
+    const overlay = document.getElementById('overlay');
+    const overlayMsg = document.getElementById('overlay-msg');
+    const prog = document.getElementById('progress');
+    const fill = document.getElementById('progress-fill');
+
+    const count    = parseInt(document.getElementById('s-count').value);
+    const shutter  = parseFloat(document.getElementById('s-shutter').value);
+    const interval = parseFloat(document.getElementById('s-interval').value);
+
+    btn.disabled = true;
+    overlay.classList.add('show');
+    prog.classList.add('show');
+    fill.style.width = '5%';
+    overlayMsg.textContent = `촬영 중... 1 / ${count}`;
+
+    const totalSec = count * shutter + (count - 1) * interval;
+    const started = Date.now();
+    const ticker = setInterval(() => {
+      const elapsed = (Date.now() - started) / 1000;
+      const pct = Math.min(90, (elapsed / totalSec) * 100);
+      fill.style.width = pct + '%';
+      const cur = Math.min(count, Math.floor(elapsed / (shutter + interval)) + 1);
+      overlayMsg.textContent = `촬영 중... ${cur} / ${count}`;
+    }, 600);
+
+    try {
+      const res = await fetch('/api/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shutter: shutter,
+          gain: parseFloat(document.getElementById('s-gain').value),
+          awb: document.getElementById('s-awb').value,
+          count: count,
+          interval: interval,
+        }),
+      });
+      clearInterval(ticker);
+      const data = await res.json();
+      fill.style.width = '100%';
+
+      if (data.saved && data.saved.length > 0) {
+        let msg = `✓ ${data.saved.length}장 저장됨`;
+        if (data.gps_saved) msg += ' 📍GPS 포함';
+        showToast(msg);
+      } else {
+        showToast('촬영 실패: ' + (data.error || '알 수 없는 오류'), 5000);
+      }
+    } catch (e) {
+      clearInterval(ticker);
+      showToast('서버 연결 오류');
+    } finally {
+      setTimeout(() => {
+        overlay.classList.remove('show');
+        prog.classList.remove('show');
+        fill.style.width = '0';
+        btn.disabled = false;
+        busy = false;
+      }, 800);
+    }
+  }
+
+  /* ── Gallery ── */
+  async function loadGallery() {
+    const grid = document.getElementById('gallery-grid');
+    grid.innerHTML = '<div class="empty">불러오는 중...</div>';
+    try {
+      const r = await fetch('/api/photos');
+      const photos = await r.json();
+      if (!photos.length) {
+        grid.innerHTML = '<div class="empty">촬영된 사진이 없습니다</div>';
+        return;
+      }
+      grid.innerHTML = '';
+      photos.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'g-item';
+        const label = p.filename.replace('star_', '').replace(/\.jpg$/, '').replace(/_(\d{3})$/, ' #$1');
+        div.innerHTML =
+          `<img src="/api/photos/${p.filename}/thumb" loading="lazy"` +
+          ` onerror="this.src='/api/photos/${p.filename}'">` +
+          (p.has_gps ? '<span class="gps-badge">GPS</span>' : '') +
+          `<div class="g-info">${label}</div>`;
+        div.onclick = () => openModal(p);
+        grid.appendChild(div);
+      });
+    } catch (_) {
+      grid.innerHTML = '<div class="empty" style="color:var(--err)">불러오기 실패</div>';
+    }
+  }
+
+  function openModal(photo) {
+    currentPhoto = photo;
+    document.getElementById('modal-fname').textContent = photo.filename;
+    document.getElementById('modal-img').src = '/api/photos/' + photo.filename;
+
+    const gpsDiv = document.getElementById('modal-gps');
+    if (photo.gps && photo.gps.fix) {
+      const g = photo.gps;
+      let txt = `📍 위도 ${g.latitude?.toFixed(6)},  경도 ${g.longitude?.toFixed(6)}`;
+      if (g.altitude != null) txt += `  ·  고도 ${g.altitude.toFixed(0)} m`;
+      if (g.satellites)       txt += `  ·  위성 ${g.satellites}개`;
+      if (g.timestamp)        txt += `\n🕐 ${g.timestamp}`;
+      gpsDiv.textContent = txt;
+      gpsDiv.style.whiteSpace = 'pre';
+      gpsDiv.classList.add('show');
+    } else {
+      gpsDiv.classList.remove('show');
+    }
+    document.getElementById('modal').classList.add('open');
+  }
+
+  function closeModal() {
+    document.getElementById('modal').classList.remove('open');
+    document.getElementById('modal-img').src = '';
+    currentPhoto = null;
+  }
+
+  function downloadPhoto() {
+    if (!currentPhoto) return;
+    const a = document.createElement('a');
+    a.href = '/api/photos/' + currentPhoto.filename;
+    a.download = currentPhoto.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  async function deletePhoto() {
+    if (!currentPhoto) return;
+    if (!confirm(currentPhoto.filename + '\n\n삭제하시겠습니까?')) return;
+    try {
+      await fetch('/api/photos/' + currentPhoto.filename + '/delete', { method: 'POST' });
+      closeModal();
+      showToast('삭제됨');
+      loadGallery();
+    } catch (_) { showToast('삭제 실패'); }
+  }
+
+  /* ── Boot ── */
+  fetchStatus();
+  setInterval(fetchStatus, 4000);
+</script>
+</body>
+</html>
