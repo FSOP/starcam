@@ -6,43 +6,23 @@
   <title>StarCam</title>
   <style>
     :root {
-      --bg: #0a0c14;
-      --surface: #12152a;
-      --surface2: #1a1f38;
-      --accent: #4a7fff;
-      --accent2: #7b4fff;
-      --text: #dde2ff;
-      --text-dim: #5a6080;
-      --ok: #3ddc84;
-      --warn: #ffb347;
-      --err: #ff4d6d;
+      --bg: #0a0c14; --surface: #12152a; --surface2: #1a1f38;
+      --accent: #4a7fff; --accent2: #7b4fff;
+      --text: #dde2ff; --dim: #5a6080;
+      --ok: #3ddc84; --warn: #ffb347; --err: #ff4d6d;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     html, body { height: 100%; overflow: hidden; }
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      display: flex; flex-direction: column;
-    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; flex-direction: column; }
 
     /* ── Header ── */
-    header {
-      background: var(--surface);
-      padding: 8px 12px 0;
-      flex-shrink: 0;
-      border-bottom: 1px solid rgba(255,255,255,.04);
-    }
-    .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    header { background: var(--surface); padding: 7px 12px 0; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .hdr-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
     .logo { font-size: 14px; font-weight: 700; letter-spacing: 3px; }
-    .ph-count { font-size: 11px; color: var(--text-dim); }
-    .chips { display: flex; gap: 5px; flex-wrap: wrap; padding-bottom: 8px; }
-    .chip {
-      display: inline-flex; align-items: center; gap: 4px;
-      font-size: 10px; padding: 2px 7px; border-radius: 20px;
-      background: var(--surface2); color: var(--text-dim); white-space: nowrap;
-    }
-    .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+    .ph-count { font-size: 11px; color: var(--dim); }
+    .chips { display: flex; gap: 5px; flex-wrap: wrap; padding-bottom: 7px; }
+    .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 2px 7px; border-radius: 20px; background: var(--surface2); color: var(--dim); white-space: nowrap; }
+    .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--dim); flex-shrink: 0; }
     .chip.ok   .dot { background: var(--ok); }
     .chip.warn .dot { background: var(--warn); }
     .chip.err  .dot { background: var(--err); }
@@ -51,100 +31,71 @@
 
     /* ── Tabs ── */
     .tabs { display: flex; background: var(--surface); flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,.04); }
-    .tab {
-      flex: 1; padding: 8px; text-align: center; font-size: 13px;
-      color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent;
-      transition: color .15s, border-color .15s;
-    }
+    .tab { flex: 1; padding: 8px; text-align: center; font-size: 13px; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; }
     .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
     /* ── Panel container ── */
     .panels { flex: 1; position: relative; overflow: hidden; }
     .panel { display: none; position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; }
-    .panel.active { display: block; }
-    /* Capture panel needs flex */
-    #panel-capture.active {
-      display: flex; flex-direction: column;
-      padding: 10px 12px; gap: 10px;
-    }
+    #panel-capture.active { display: flex; flex-direction: column; }
+    #panel-gallery.active { display: block; padding: 10px; }
 
-    /* ── Capture top: settings left, preview right ── */
-    .capture-top {
-      display: grid;
-      grid-template-columns: 1fr 116px;
-      gap: 10px;
-      align-items: start;
-    }
-
-    /* ── Preview (small, top-right) ── */
+    /* ── Preview: full width, ~25vh tall ── */
     .preview-wrap {
-      width: 116px; height: 87px;          /* 4:3 */
-      background: #000; border-radius: 8px;
-      overflow: hidden; position: relative; flex-shrink: 0;
+      width: 100%; height: 25vh; min-height: 120px; max-height: 220px;
+      background: #000; flex-shrink: 0; position: relative; overflow: hidden;
     }
-    .preview-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .preview-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
     .p-overlay {
       position: absolute; inset: 0; display: none;
       align-items: center; justify-content: center;
-      background: rgba(0,0,0,.75); font-size: 11px; color: var(--text);
-      text-align: center; padding: 4px;
+      background: rgba(0,0,0,.75); font-size: 14px; color: var(--text);
     }
     .p-overlay.show { display: flex; }
 
-    /* ── Settings ── */
-    .settings { display: flex; flex-direction: column; gap: 9px; }
+    /* ── Settings (compact single-line rows) ── */
+    .settings { padding: 8px 12px; display: flex; flex-direction: column; gap: 7px; flex-shrink: 0; }
 
-    .param { display: flex; flex-direction: column; gap: 3px; }
+    .row { display: flex; align-items: center; gap: 7px; height: 34px; }
+    .lbl { font-size: 11px; color: var(--dim); width: 52px; flex-shrink: 0; }
 
-    /* Top row of each param: label on left, number input on right */
-    .param-hdr { display: flex; align-items: center; justify-content: space-between; }
-    .param-lbl { font-size: 11px; color: var(--text-dim); }
-    .param-right { display: flex; align-items: center; gap: 3px; }
+    input[type=range] {
+      flex: 1; -webkit-appearance: none; appearance: none; min-width: 0;
+      background: var(--surface2); height: 5px; border-radius: 3px; outline: none; cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 22px; height: 22px;
+      border-radius: 50%; background: var(--accent); cursor: pointer;
+      box-shadow: 0 0 5px rgba(74,127,255,.5);
+    }
 
-    /* Number input */
+    .num-wrap { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
     .num-in {
-      width: 66px;
-      background: var(--surface2); color: var(--accent);
+      width: 60px; background: var(--surface2); color: var(--accent);
       border: 1px solid transparent; border-radius: 6px;
-      padding: 3px 5px; font-size: 13px; font-weight: 600;
-      text-align: right;
+      padding: 4px 5px; font-size: 13px; font-weight: 600; text-align: right;
       -moz-appearance: textfield;
     }
     .num-in:focus { outline: none; border-color: var(--accent); background: #1e2440; }
     .num-in::-webkit-outer-spin-button,
     .num-in::-webkit-inner-spin-button { -webkit-appearance: none; }
-    .unit { font-size: 11px; color: var(--text-dim); }
+    .unit { font-size: 11px; color: var(--dim); }
 
-    /* Slider row */
-    .slider-row { display: flex; align-items: center; gap: 5px; }
-    .sl-bound { font-size: 9px; color: var(--text-dim); white-space: nowrap; width: 28px; }
-    .sl-bound.right { text-align: right; }
-    input[type=range] {
-      flex: 1; -webkit-appearance: none; appearance: none;
-      background: var(--surface2); height: 5px; border-radius: 3px; outline: none; cursor: pointer;
-    }
-    input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance: none; width: 20px; height: 20px;
-      border-radius: 50%; background: var(--accent); cursor: pointer;
-      box-shadow: 0 0 4px rgba(74,127,255,.4);
-    }
-
-    /* AWB select */
-    .awb-select {
-      width: 100%; background: var(--surface2); color: var(--text);
+    select.awb {
+      flex: 1; background: var(--surface2); color: var(--text);
       border: 1px solid transparent; padding: 5px 8px; border-radius: 6px;
       font-size: 13px; cursor: pointer;
     }
-    .awb-select:focus { outline: none; border-color: var(--accent); }
+    select.awb:focus { outline: none; border-color: var(--accent); }
 
     /* ── Progress ── */
-    .progress { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; display: none; }
+    .progress { height: 3px; background: var(--surface2); flex-shrink: 0; overflow: hidden; display: none; }
     .progress.show { display: block; }
-    .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0; transition: width .4s; }
+    .pfill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0; transition: width .4s; }
 
     /* ── Capture button ── */
     .capture-btn {
-      width: 100%; padding: 14px;
+      margin: 8px 12px 10px; padding: 14px;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       color: #fff; border: none; border-radius: 12px;
       font-size: 15px; font-weight: 700; letter-spacing: 2px;
@@ -154,25 +105,31 @@
     .capture-btn:disabled { opacity: .4; cursor: not-allowed; }
 
     /* ── Gallery ── */
-    #panel-gallery.active { display: block; padding: 12px; }
     .gallery-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .g-item { position: relative; aspect-ratio: 4/3; background: var(--surface); border-radius: 8px; overflow: hidden; cursor: pointer; }
     .g-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .g-info { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.65); padding: 3px 6px; font-size: 10px; color: var(--text-dim); }
+    .g-info { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.65); padding: 3px 6px; font-size: 10px; color: var(--dim); }
     .gps-badge { position: absolute; top: 5px; right: 5px; background: rgba(61,220,132,.85); color: #000; font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 4px; }
-    .empty { color: var(--text-dim); font-size: 13px; padding: 24px; text-align: center; }
+    .empty { color: var(--dim); font-size: 13px; padding: 24px; text-align: center; }
 
     /* ── Modal ── */
     .modal { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.97); flex-direction: column; }
     .modal.open { display: flex; }
-    .modal-hdr { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; flex-shrink: 0; }
-    .modal-fname { font-size: 12px; color: var(--text-dim); word-break: break-all; }
-    .modal-close { background: none; border: none; color: var(--text); font-size: 26px; line-height: 1; cursor: pointer; padding: 0 4px; }
+    .modal-hdr { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; flex-shrink: 0; }
+    .modal-fname { font-size: 12px; color: var(--dim); word-break: break-all; flex: 1; margin-right: 8px; }
+    .modal-close { background: none; border: none; color: var(--text); font-size: 26px; line-height: 1; cursor: pointer; }
     .modal-img { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
     .modal-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
-    .modal-gps { padding: 8px 16px; background: var(--surface); font-size: 12px; color: var(--text-dim); flex-shrink: 0; display: none; white-space: pre; }
-    .modal-gps.show { display: block; }
-    .modal-actions { display: flex; gap: 8px; padding: 14px 16px; flex-shrink: 0; }
+    .modal-meta {
+      padding: 10px 14px; background: var(--surface);
+      font-size: 11px; color: var(--dim); flex-shrink: 0;
+      display: none; line-height: 1.7;
+    }
+    .modal-meta.show { display: block; }
+    .meta-row { display: flex; gap: 6px; }
+    .meta-key { color: var(--dim); width: 52px; flex-shrink: 0; }
+    .meta-val { color: var(--text); }
+    .modal-actions { display: flex; gap: 8px; padding: 12px 16px; flex-shrink: 0; }
     .btn { flex: 1; padding: 13px; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; }
     .btn-dl  { background: var(--accent); color: #fff; }
     .btn-del { background: var(--err);    color: #fff; }
@@ -185,7 +142,7 @@
 <body>
 
 <header>
-  <div class="header-top">
+  <div class="hdr-top">
     <span class="logo">★ STARCAM</span>
     <span class="ph-count" id="ph-count"></span>
   </div>
@@ -207,111 +164,80 @@
   <!-- ── 촬영 탭 ── -->
   <div class="panel active" id="panel-capture">
 
-    <div class="capture-top">
+    <!-- 미리보기: 전체 너비, 약 25vh -->
+    <div class="preview-wrap">
+      <img id="preview" src="/stream" alt="" onerror="handleStreamErr()">
+      <div class="p-overlay" id="p-overlay"></div>
+    </div>
 
-      <!-- 파라미터 -->
-      <div class="settings">
+    <!-- 파라미터 -->
+    <div class="settings">
 
-        <!-- 노출 (로그 스케일) -->
-        <div class="param">
-          <div class="param-hdr">
-            <span class="param-lbl">노출</span>
-            <div class="param-right">
-              <input type="number" class="num-in" id="in-shutter" value="2000"
-                     min="1" max="120000" inputmode="numeric"
-                     oninput="onShutterInput(this.value)">
-              <span class="unit">ms</span>
-            </div>
-          </div>
-          <div class="slider-row">
-            <span class="sl-bound">1ms</span>
-            <input type="range" id="sl-shutter" min="0" max="1000" step="1" value="582"
-                   oninput="onShutterSlider(this.value)">
-            <span class="sl-bound right">120s</span>
-          </div>
+      <!-- 노출 (로그 스케일) -->
+      <div class="row">
+        <span class="lbl">노출</span>
+        <input type="range" id="sl-shutter" min="0" max="1000" step="1" value="582"
+               oninput="onShutterSlider(this.value)">
+        <div class="num-wrap">
+          <input type="number" class="num-in" id="in-shutter" value="2000"
+                 min="1" max="120000" inputmode="numeric" oninput="onShutterInput(this.value)">
+          <span class="unit">ms</span>
         </div>
-
-        <!-- 게인 -->
-        <div class="param">
-          <div class="param-hdr">
-            <span class="param-lbl">게인</span>
-            <input type="number" class="num-in" id="in-gain" value="1"
-                   min="1" max="16" step="0.5" inputmode="decimal"
-                   oninput="syncSlider('gain',this.value,1,16)">
-          </div>
-          <div class="slider-row">
-            <span class="sl-bound">1</span>
-            <input type="range" id="sl-gain" min="1" max="16" step="0.5" value="1"
-                   oninput="syncInput('gain',this.value)">
-            <span class="sl-bound right">16</span>
-          </div>
-        </div>
-
-        <!-- AWB -->
-        <div class="param">
-          <div class="param-hdr">
-            <span class="param-lbl">화이트밸런스</span>
-          </div>
-          <select class="awb-select" id="s-awb">
-            <option value="auto">자동</option>
-            <option value="incandescent">백열등</option>
-            <option value="tungsten">텅스텐</option>
-            <option value="fluorescent">형광등</option>
-            <option value="indoor">실내</option>
-            <option value="daylight">주광</option>
-            <option value="cloudy">흐림</option>
-          </select>
-        </div>
-
-        <!-- 연속 장수 -->
-        <div class="param">
-          <div class="param-hdr">
-            <span class="param-lbl">연속 장수</span>
-            <div class="param-right">
-              <input type="number" class="num-in" id="in-count" value="1"
-                     min="1" max="20" step="1" inputmode="numeric"
-                     oninput="syncSlider('count',this.value,1,20)">
-              <span class="unit">장</span>
-            </div>
-          </div>
-          <div class="slider-row">
-            <span class="sl-bound">1</span>
-            <input type="range" id="sl-count" min="1" max="20" step="1" value="1"
-                   oninput="syncInput('count',this.value)">
-            <span class="sl-bound right">20</span>
-          </div>
-        </div>
-
-        <!-- 촬영 간격 -->
-        <div class="param">
-          <div class="param-hdr">
-            <span class="param-lbl">촬영 간격</span>
-            <div class="param-right">
-              <input type="number" class="num-in" id="in-interval" value="3"
-                     min="1" max="60" step="1" inputmode="numeric"
-                     oninput="syncSlider('interval',this.value,1,60)">
-              <span class="unit">s</span>
-            </div>
-          </div>
-          <div class="slider-row">
-            <span class="sl-bound">1s</span>
-            <input type="range" id="sl-interval" min="1" max="60" step="1" value="3"
-                   oninput="syncInput('interval',this.value)">
-            <span class="sl-bound right">60s</span>
-          </div>
-        </div>
-
-      </div><!-- /settings -->
-
-      <!-- 미리보기 (우상단, 작게) -->
-      <div class="preview-wrap">
-        <img id="preview" src="/stream" alt="" onerror="handleStreamErr()">
-        <div class="p-overlay" id="p-overlay"></div>
       </div>
 
-    </div><!-- /capture-top -->
+      <!-- 게인 -->
+      <div class="row">
+        <span class="lbl">게인</span>
+        <input type="range" id="sl-gain" min="1" max="16" step="0.5" value="1"
+               oninput="syncInput('gain', this.value)">
+        <input type="number" class="num-in" id="in-gain" value="1"
+               min="1" max="16" step="0.5" inputmode="decimal"
+               oninput="syncSlider('gain', this.value, 1, 16)">
+      </div>
 
-    <div class="progress" id="progress"><div class="progress-fill" id="pfill"></div></div>
+      <!-- AWB -->
+      <div class="row">
+        <span class="lbl">WB</span>
+        <select class="awb" id="s-awb">
+          <option value="auto">자동</option>
+          <option value="incandescent">백열등</option>
+          <option value="tungsten">텅스텐</option>
+          <option value="fluorescent">형광등</option>
+          <option value="indoor">실내</option>
+          <option value="daylight">주광</option>
+          <option value="cloudy">흐림</option>
+        </select>
+      </div>
+
+      <!-- 연속 장수 -->
+      <div class="row">
+        <span class="lbl">장수</span>
+        <input type="range" id="sl-count" min="1" max="20" step="1" value="1"
+               oninput="syncInput('count', this.value)">
+        <div class="num-wrap">
+          <input type="number" class="num-in" id="in-count" value="1"
+                 min="1" max="20" step="1" inputmode="numeric"
+                 oninput="syncSlider('count', this.value, 1, 20)">
+          <span class="unit">장</span>
+        </div>
+      </div>
+
+      <!-- 간격 -->
+      <div class="row">
+        <span class="lbl">간격</span>
+        <input type="range" id="sl-interval" min="1" max="60" step="1" value="3"
+               oninput="syncInput('interval', this.value)">
+        <div class="num-wrap">
+          <input type="number" class="num-in" id="in-interval" value="3"
+                 min="1" max="60" step="1" inputmode="numeric"
+                 oninput="syncSlider('interval', this.value, 1, 60)">
+          <span class="unit">s</span>
+        </div>
+      </div>
+
+    </div><!-- /settings -->
+
+    <div class="progress" id="progress"><div class="pfill" id="pfill"></div></div>
 
     <button class="capture-btn" id="capture-btn" onclick="doCapture()">★ 촬영</button>
 
@@ -322,7 +248,7 @@
     <div class="gallery-grid" id="gallery-grid"></div>
   </div>
 
-</div><!-- /panels -->
+</div>
 
 <!-- 전체화면 모달 -->
 <div class="modal" id="modal">
@@ -331,7 +257,7 @@
     <button class="modal-close" onclick="closeModal()">✕</button>
   </div>
   <div class="modal-img"><img id="modal-img" src="" alt=""></div>
-  <div class="modal-gps" id="modal-gps"></div>
+  <div class="modal-meta" id="modal-meta"></div>
   <div class="modal-actions">
     <button class="btn btn-dl"  onclick="downloadPhoto()">다운로드</button>
     <button class="btn btn-del" onclick="deletePhoto()">삭제</button>
@@ -341,26 +267,19 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  /* ─── Shutter log scale ─────────────────────────────────── */
-  // Slider: 0–1000 (linear) → 1ms–120000ms (log)
+  /* ─── Shutter: log scale (slider 0–1000 → 1ms–120000ms) ─── */
   const L0 = Math.log10(1), L1 = Math.log10(120000);
+  const slToMs = v  => Math.round(Math.pow(10, L0 + (L1 - L0) * v / 1000));
+  const msToSl = ms => Math.round((Math.log10(Math.max(1, ms)) - L0) / (L1 - L0) * 1000);
 
-  function sliderToMs(v)  { return Math.round(Math.pow(10, L0 + (L1 - L0) * v / 1000)); }
-  function msToSlider(ms) { return Math.round((Math.log10(Math.max(1, ms)) - L0) / (L1 - L0) * 1000); }
+  function onShutterSlider(v) { document.getElementById('in-shutter').value = slToMs(+v); }
+  function onShutterInput(v)  { document.getElementById('sl-shutter').value = msToSl(Math.max(1, Math.min(120000, +v || 1))); }
 
-  function onShutterSlider(v) {
-    document.getElementById('in-shutter').value = sliderToMs(parseInt(v));
-  }
-  function onShutterInput(v) {
-    const ms = Math.max(1, Math.min(120000, parseInt(v) || 1));
-    document.getElementById('sl-shutter').value = msToSlider(ms);
-  }
+  /* ─── Linear sync ── */
+  function syncInput(key, v)          { document.getElementById('in-' + key).value = v; }
+  function syncSlider(key, v, mn, mx) { document.getElementById('sl-' + key).value = Math.max(mn, Math.min(mx, +v || mn)); }
 
-  /* ─── Linear sync ──────────────────────────────────────── */
-  function syncInput(key, v)           { document.getElementById('in-' + key).value = v; }
-  function syncSlider(key, v, mn, mx)  { document.getElementById('sl-' + key).value = Math.max(mn, Math.min(mx, parseFloat(v) || mn)); }
-
-  /* ─── Tab ──────────────────────────────────────────────── */
+  /* ─── Tab ── */
   function switchTab(name) {
     ['capture','gallery'].forEach(n => {
       document.getElementById('tab-btn-' + n).classList.toggle('active', n === name);
@@ -373,7 +292,7 @@
     setTimeout(() => { document.getElementById('preview').src = '/stream?' + Date.now(); }, 3000);
   }
 
-  /* ─── Status polling ────────────────────────────────────── */
+  /* ─── Status ── */
   async function fetchStatus() {
     try {
       const s = await fetch('/api/status').then(r => r.json());
@@ -384,12 +303,9 @@
       let gCls = '', gTxt = 'GPS 없음';
       if (s.gps_fix) {
         gCls = 'gps-fix';
-        const lat = s.latitude  != null ? s.latitude.toFixed(4)  : '?';
-        const lon = s.longitude != null ? s.longitude.toFixed(4) : '?';
-        gTxt = `GPS ${lat}, ${lon}` + (s.satellites ? ` (${s.satellites}개)` : '');
-      } else if (s.gps_connected) {
-        gCls = 'gps-conn'; gTxt = 'GPS 탐색중';
-      }
+        gTxt = `GPS ${s.latitude?.toFixed(4)}, ${s.longitude?.toFixed(4)}` +
+               (s.satellites ? ` (${s.satellites}개)` : '');
+      } else if (s.gps_connected) { gCls = 'gps-conn'; gTxt = 'GPS 탐색중'; }
       const gc = document.getElementById('chip-gps');
       gc.className = 'chip ' + gCls;
       document.getElementById('lbl-gps').textContent = gTxt;
@@ -406,70 +322,63 @@
   function setChip(id, cls, txt) {
     const el = document.getElementById(id);
     el.className = 'chip ' + cls;
-    el.querySelector('[id^="lbl-"]').textContent = txt;
+    el.querySelector('span:last-child').textContent = txt;
   }
 
-  /* ─── Capture ───────────────────────────────────────────── */
+  /* ─── Capture ── */
   let busy = false;
 
   async function doCapture() {
     if (busy) return;
     busy = true;
+    const btn     = document.getElementById('capture-btn');
+    const overlay = document.getElementById('p-overlay');
+    const prog    = document.getElementById('progress');
+    const fill    = document.getElementById('pfill');
 
-    const btn      = document.getElementById('capture-btn');
-    const overlay  = document.getElementById('p-overlay');
-    const prog     = document.getElementById('progress');
-    const fill     = document.getElementById('pfill');
-
-    const shutterMs  = Math.max(1, parseInt(document.getElementById('in-shutter').value) || 2000);
-    const gain       = parseFloat(document.getElementById('in-gain').value) || 1;
+    const shutterMs  = Math.max(1, +document.getElementById('in-shutter').value || 2000);
+    const gain       = +document.getElementById('in-gain').value || 1;
     const awb        = document.getElementById('s-awb').value;
-    const count      = Math.max(1, parseInt(document.getElementById('in-count').value) || 1);
-    const interval   = Math.max(1, parseFloat(document.getElementById('in-interval').value) || 3);
+    const count      = Math.max(1, +document.getElementById('in-count').value || 1);
+    const interval   = Math.max(1, +document.getElementById('in-interval').value || 3);
     const shutterSec = shutterMs / 1000;
 
     btn.disabled = true;
-    overlay.classList.add('show');
     overlay.textContent = `1 / ${count}`;
+    overlay.classList.add('show');
     prog.classList.add('show');
     fill.style.width = '5%';
 
-    const totalSec = count * shutterSec + (count - 1) * interval;
+    const total = count * shutterSec + (count - 1) * interval;
     const t0 = Date.now();
-    const ticker = setInterval(() => {
+    const tick = setInterval(() => {
       const el = (Date.now() - t0) / 1000;
-      fill.style.width = Math.min(90, el / totalSec * 100) + '%';
+      fill.style.width = Math.min(90, el / total * 100) + '%';
       overlay.textContent = Math.min(count, Math.floor(el / (shutterSec + interval)) + 1) + ' / ' + count;
     }, 500);
 
     try {
       const res  = await fetch('/api/capture', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ shutter: shutterMs, gain, awb, count, interval }),
       });
-      clearInterval(ticker);
-      const data = await res.json();
+      clearInterval(tick);
+      const d = await res.json();
       fill.style.width = '100%';
-      if (data.saved && data.saved.length > 0)
-        showToast(`✓ ${data.saved.length}장 저장됨` + (data.gps_saved ? ' 📍' : ''));
+      if (d.saved && d.saved.length)
+        showToast(`✓ ${d.saved.length}장 저장됨` + (d.gps_saved ? ' 📍' : ''));
       else
-        showToast('촬영 실패: ' + (data.error || '알 수 없는 오류'), 5000);
-    } catch (_) {
-      clearInterval(ticker);
-      showToast('서버 연결 오류');
-    } finally {
+        showToast('촬영 실패: ' + (d.error || '알 수 없는 오류'), 5000);
+    } catch (_) { clearInterval(tick); showToast('서버 연결 오류'); }
+    finally {
       setTimeout(() => {
-        overlay.classList.remove('show');
-        prog.classList.remove('show');
-        fill.style.width = '0';
-        btn.disabled = false;
-        busy = false;
+        overlay.classList.remove('show'); prog.classList.remove('show');
+        fill.style.width = '0'; btn.disabled = false; busy = false;
       }, 800);
     }
   }
 
-  /* ─── Gallery ───────────────────────────────────────────── */
+  /* ─── Gallery ── */
   async function loadGallery() {
     const grid = document.getElementById('gallery-grid');
     grid.innerHTML = '<div class="empty">불러오는 중...</div>';
@@ -491,57 +400,74 @@
     } catch (_) { grid.innerHTML = '<div class="empty" style="color:var(--err)">불러오기 실패</div>'; }
   }
 
-  /* ─── Modal ─────────────────────────────────────────────── */
-  let currentPhoto = null;
+  /* ─── Modal ── */
+  let cur = null;
 
   function openModal(photo) {
-    currentPhoto = photo;
+    cur = photo;
     document.getElementById('modal-fname').textContent = photo.filename;
     document.getElementById('modal-img').src = '/api/photos/' + photo.filename;
-    const gd = document.getElementById('modal-gps');
-    if (photo.gps && photo.gps.fix) {
-      const g = photo.gps;
-      let t = `📍 위도 ${g.latitude?.toFixed(6)},  경도 ${g.longitude?.toFixed(6)}`;
-      if (g.altitude  != null) t += `  ·  고도 ${g.altitude.toFixed(0)}m`;
-      if (g.satellites)        t += `  ·  위성 ${g.satellites}개`;
-      if (g.timestamp)         t += `\n🕐 ${g.timestamp}`;
-      gd.textContent = t;
-      gd.classList.add('show');
-    } else { gd.classList.remove('show'); }
+
+    const meta  = photo.metadata || {};
+    const cam   = meta.camera || {};
+    const gps   = meta.gps;
+    const metaDiv = document.getElementById('modal-meta');
+
+    const rows = [];
+    if (meta.captured_at) rows.push(['촬영일시', meta.captured_at.replace('T', ' ')]);
+    if (cam.shutter_ms != null) {
+      const s = cam.shutter_ms;
+      rows.push(['노출', s >= 1000 ? (s/1000).toFixed(s%1000===0?0:2)+'s' : s+'ms']);
+    }
+    if (cam.gain     != null) rows.push(['게인',    cam.gain]);
+    if (cam.awb)               rows.push(['WB',     cam.awb]);
+    if (cam.total    > 1)      rows.push(['연속',   `${cam.sequence} / ${cam.total}  (간격 ${cam.interval_s}s)`]);
+    if (gps && gps.fix) {
+      rows.push(['위도',   gps.latitude?.toFixed(6)]);
+      rows.push(['경도',   gps.longitude?.toFixed(6)]);
+      if (gps.altitude  != null) rows.push(['고도',   gps.altitude.toFixed(1) + ' m']);
+      if (gps.satellites)        rows.push(['위성',   gps.satellites + '개']);
+      if (gps.timestamp)         rows.push(['GPS 시각', gps.timestamp]);
+    }
+
+    if (rows.length) {
+      metaDiv.innerHTML = rows.map(([k,v]) =>
+        `<div class="meta-row"><span class="meta-key">${k}</span><span class="meta-val">${v}</span></div>`
+      ).join('');
+      metaDiv.classList.add('show');
+    } else {
+      metaDiv.classList.remove('show');
+    }
     document.getElementById('modal').classList.add('open');
   }
 
   function closeModal() {
     document.getElementById('modal').classList.remove('open');
     document.getElementById('modal-img').src = '';
-    currentPhoto = null;
+    cur = null;
   }
 
   function downloadPhoto() {
-    if (!currentPhoto) return;
+    if (!cur) return;
     const a = document.createElement('a');
-    a.href = '/api/photos/' + currentPhoto.filename;
-    a.download = currentPhoto.filename;
+    a.href = '/api/photos/' + cur.filename; a.download = cur.filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 
   async function deletePhoto() {
-    if (!currentPhoto) return;
-    if (!confirm(currentPhoto.filename + '\n\n삭제하시겠습니까?')) return;
+    if (!cur || !confirm(cur.filename + '\n\n삭제하시겠습니까?')) return;
     try {
-      await fetch('/api/photos/' + currentPhoto.filename + '/delete', { method: 'POST' });
+      await fetch('/api/photos/' + cur.filename + '/delete', {method:'POST'});
       closeModal(); showToast('삭제됨'); loadGallery();
     } catch (_) { showToast('삭제 실패'); }
   }
 
-  /* ─── Toast ─────────────────────────────────────────────── */
   function showToast(msg, dur = 3000) {
     const t = document.getElementById('toast');
     t.textContent = msg; t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), dur);
   }
 
-  /* ─── Init ──────────────────────────────────────────────── */
   fetchStatus();
   setInterval(fetchStatus, 4000);
 </script>
