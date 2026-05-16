@@ -52,7 +52,7 @@ class Camera:
         return self._connected
 
     def capture(self, params, gps_data=None):
-        shutter = float(params.get('shutter', 1))
+        shutter_ms = float(params.get('shutter', 2000))   # milliseconds
         gain = float(params.get('gain', 1))
         awb = params.get('awb', 'auto')
         count = min(int(params.get('count', 1)), 20)
@@ -73,17 +73,19 @@ class Camera:
                     filename = f'star_{ts}_{i+1:03d}.jpg'
                     filepath = os.path.join(PHOTOS_DIR, filename)
 
+                    shutter_us = int(shutter_ms * 1000)
                     cmd = [
                         'rpicam-still', '-n',
                         '-o', filepath,
-                        '--shutter', str(int(shutter * 1_000_000)),
+                        '--shutter', str(shutter_us),
                         '--gain', str(gain),
                         '--awb', awb,
                         '-t', '500',
                     ]
+                    timeout_sec = shutter_ms / 1000 + 30
                     try:
                         result = subprocess.run(
-                            cmd, capture_output=True, timeout=shutter + 30
+                            cmd, capture_output=True, timeout=timeout_sec
                         )
                         if result.returncode == 0 and os.path.exists(filepath):
                             saved.append(filename)

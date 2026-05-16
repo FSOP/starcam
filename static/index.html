@@ -221,10 +221,10 @@
 
     <div class="settings">
       <div class="row">
-        <span class="lbl">노출 (초)</span>
-        <input type="range" id="s-shutter" min="0.5" max="60" step="0.5" value="2"
-               oninput="updateVal('shutter', this.value+'s')">
-        <span class="val" id="v-shutter">2s</span>
+        <span class="lbl">노출</span>
+        <input type="range" id="s-shutter" min="1" max="120000" step="1" value="2000"
+               oninput="updateShutter(this.value)">
+        <span class="val" id="v-shutter">2000ms</span>
       </div>
       <div class="row">
         <span class="lbl">게인</span>
@@ -291,6 +291,18 @@
   /* ── Helpers ── */
   function updateVal(key, txt) {
     document.getElementById('v-' + key).textContent = txt;
+  }
+
+  function updateShutter(ms) {
+    ms = parseInt(ms);
+    let label;
+    if (ms < 1000) {
+      label = ms + 'ms';
+    } else {
+      const s = (ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1);
+      label = ms + 'ms (' + s + 's)';
+    }
+    document.getElementById('v-shutter').textContent = label;
   }
 
   function showToast(msg, dur = 3000) {
@@ -368,9 +380,10 @@
     const prog = document.getElementById('progress');
     const fill = document.getElementById('progress-fill');
 
-    const count    = parseInt(document.getElementById('s-count').value);
-    const shutter  = parseFloat(document.getElementById('s-shutter').value);
-    const interval = parseFloat(document.getElementById('s-interval').value);
+    const count      = parseInt(document.getElementById('s-count').value);
+    const shutterMs  = parseInt(document.getElementById('s-shutter').value);
+    const interval   = parseFloat(document.getElementById('s-interval').value);
+    const shutterSec = shutterMs / 1000;
 
     btn.disabled = true;
     overlay.classList.add('show');
@@ -378,13 +391,13 @@
     fill.style.width = '5%';
     overlayMsg.textContent = `촬영 중... 1 / ${count}`;
 
-    const totalSec = count * shutter + (count - 1) * interval;
+    const totalSec = count * shutterSec + (count - 1) * interval;
     const started = Date.now();
     const ticker = setInterval(() => {
       const elapsed = (Date.now() - started) / 1000;
       const pct = Math.min(90, (elapsed / totalSec) * 100);
       fill.style.width = pct + '%';
-      const cur = Math.min(count, Math.floor(elapsed / (shutter + interval)) + 1);
+      const cur = Math.min(count, Math.floor(elapsed / (shutterSec + interval)) + 1);
       overlayMsg.textContent = `촬영 중... ${cur} / ${count}`;
     }, 600);
 
@@ -393,7 +406,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          shutter: shutter,
+          shutter: shutterMs,
           gain: parseFloat(document.getElementById('s-gain').value),
           awb: document.getElementById('s-awb').value,
           count: count,
