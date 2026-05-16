@@ -1,11 +1,17 @@
 import os
+import io
 import json
 import time
+import statistics
 import threading
 import subprocess
 from datetime import datetime
 
 PHOTOS_DIR = os.path.expanduser('~/photos')
+
+# Gain → ISO (approximate for IMX296, base ISO ≈ 100)
+def gain_to_iso(gain):
+    return int(round(gain * 100 / 50) * 50)   # round to nearest 50
 
 
 class Camera:
@@ -36,18 +42,14 @@ class Camera:
                 )
                 with self._proc_lock:
                     self._preview_proc = proc
-
-                # Poll so we can kill it immediately when capture starts
                 while proc.poll() is None:
                     if self._capturing:
                         proc.kill()
                         break
                     time.sleep(0.05)
-
                 stdout, _ = proc.communicate()
                 with self._proc_lock:
                     self._preview_proc = None
-
                 if not self._capturing and proc.returncode == 0 and stdout:
                     with self._frame_lock:
                         self._latest_frame = stdout
@@ -60,9 +62,17 @@ class Camera:
                 with self._proc_lock:
                     self._preview_proc = None
                 time.sleep(2)
-
             if not self._capturing:
                 time.sleep(0.3)
+
+    def _wait_preview_stop(self, timeout=3.0):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            with self._proc_lock:
+                if self._preview_proc is None:
+                    break
+            time.sleep(0.05)
+        time.sleep(0.1)
 
     def get_frame(self):
         with self._frame_lock:
@@ -71,28 +81,38 @@ class Camera:
     def is_connected(self):
         return self._connected
 
+    def _build_cmd(self, filepath, shutter_us, gain, awb,
+                   saturation=1.0, sharpness=1.5, contrast=1.0, quality=95):
+        cmd = [
+            'rpicam-still', '-n', '-o', filepath,
+            '--shutter', str(shutter_us),
+            '--gain', str(gain),
+            '--awb', awb,
+            '--denoise', 'off',
+            '--saturation', str(saturation),
+            '--sharpness', str(sharpness),
+            '--contrast', str(contrast),
+            '--quality', str(quality),
+            '-t', '200',
+        ]
+        return cmd
+
     def capture(self, params, gps_data=None):
-        shutter_ms = float(params.get('shutter', 5000))
-        gain = float(params.get('gain', 8))
-        awb = params.get('awb', 'auto')
-        count = min(int(params.get('count', 1)), 20)
-        interval = float(params.get('interval', 1))
+        shutter_ms   = float(params.get('shutter',    5000))
+        gain         = float(params.get('gain',       8))
+        awb          = params.get('awb',              'auto')
+        count        = min(int(params.get('count',    1)), 20)
+        interval     = float(params.get('interval',   1))
+        saturation   = float(params.get('saturation', 1.0))
+        sharpness    = float(params.get('sharpness',  1.5))
+        contrast     = float(params.get('contrast',   1.0))
+        quality      = int(params.get('quality',      95))
 
         os.makedirs(PHOTOS_DIR, exist_ok=True)
-        saved = []
-        gps_saved = False
-        last_error = None
+        saved, gps_saved, last_error = [], False, None
 
         self._capturing = True
-
-        # Wait for preview process to actually die (up to 3s)
-        deadline = time.time() + 3.0
-        while time.time() < deadline:
-            with self._proc_lock:
-                if self._preview_proc is None:
-                    break
-            time.sleep(0.05)
-        time.sleep(0.1)
+        self._wait_preview_stop()
 
         try:
             with self._capture_lock:
@@ -103,18 +123,11 @@ class Camera:
                     filepath = os.path.join(PHOTOS_DIR, filename)
 
                     shutter_us = int(shutter_ms * 1000)
-                    cmd = [
-                        'rpicam-still', '-n',
-                        '-o', filepath,
-                        '--shutter', str(shutter_us),
-                        '--gain', str(gain),
-                        '--awb', awb,
-                        '--denoise', 'off',   # 별이 뭉개지지 않게 노이즈 제거 끔
-                        '-t', '200',
-                    ]
-                    timeout_sec = shutter_ms / 1000 + 30
+                    cmd = self._build_cmd(filepath, shutter_us, gain, awb,
+                                         saturation, sharpness, contrast, quality)
                     try:
-                        result = subprocess.run(cmd, capture_output=True, timeout=timeout_sec)
+                        result = subprocess.run(cmd, capture_output=True,
+                                                timeout=shutter_ms / 1000 + 30)
                         if result.returncode == 0 and os.path.exists(filepath):
                             saved.append(filename)
                             metadata = {
@@ -123,7 +136,12 @@ class Camera:
                                     'shutter_ms': shutter_ms,
                                     'shutter_us': shutter_us,
                                     'gain': gain,
+                                    'iso_equiv': gain_to_iso(gain),
                                     'awb': awb,
+                                    'saturation': saturation,
+                                    'sharpness': sharpness,
+                                    'contrast': contrast,
+                                    'quality': quality,
                                     'sequence': i + 1,
                                     'total': count,
                                     'interval_s': interval,
@@ -135,8 +153,7 @@ class Camera:
                             with open(filepath.replace('.jpg', '.json'), 'w') as f:
                                 json.dump(metadata, f, indent=2, ensure_ascii=False)
                         else:
-                            stderr = result.stderr.decode('utf-8', errors='ignore').strip()
-                            last_error = stderr or 'capture failed'
+                            last_error = result.stderr.decode('utf-8', errors='ignore').strip() or 'capture failed'
                     except subprocess.TimeoutExpired:
                         last_error = 'timeout'
 
@@ -146,8 +163,84 @@ class Camera:
             self._capturing = False
 
         return {
-            'saved': saved,
-            'count': len(saved),
+            'saved': saved, 'count': len(saved),
             'gps_saved': gps_saved,
             'error': last_error if not saved else None,
+        }
+
+    # ── Auto-calibration ─────────────────────────────────────────
+    def analyze_jpeg(self, filepath):
+        """Score an image: more stars & less noise = higher score."""
+        try:
+            from PIL import Image
+            img = Image.open(filepath).convert('L')
+            # Downsample for speed on RPi 3
+            w, h = img.size
+            scale = min(1.0, 640 / max(w, h))
+            if scale < 1.0:
+                img = img.resize((int(w * scale), int(h * scale)), Image.BILINEAR)
+            pixels = list(img.getdata())
+            n = len(pixels)
+            avg = sum(pixels) / n
+            # Background noise = stdev of darker half
+            dark = sorted(pixels)[:n // 2]
+            noise = statistics.stdev(dark) if len(dark) > 2 else 1.0
+            # Stars = pixels clearly above background
+            threshold = min(avg + 3 * noise, 245)
+            star_count = sum(1 for p in pixels if p > threshold)
+            return {
+                'avg': round(avg, 1),
+                'noise': round(noise, 1),
+                'stars': star_count,
+                'score': round(star_count / (noise + 1), 2),
+            }
+        except Exception:
+            # Fallback: larger file = more detail = more stars (crude)
+            size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
+            return {'avg': 0, 'noise': 0, 'stars': 0, 'score': size / 1000}
+
+    def calibrate(self, shutter_ms=3000):
+        """
+        Test gain 2/4/8/16 at fixed shutter.
+        Returns per-gain scores and the recommended gain.
+        """
+        gains = [2, 4, 8, 16]
+        results = []
+        tmpdir = '/tmp/starcam_cal'
+        os.makedirs(tmpdir, exist_ok=True)
+
+        self._capturing = True
+        self._wait_preview_stop()
+
+        try:
+            with self._capture_lock:
+                for gain in gains:
+                    filepath = os.path.join(tmpdir, f'cal_g{gain}.jpg')
+                    shutter_us = int(shutter_ms * 1000)
+                    cmd = self._build_cmd(filepath, shutter_us, gain, 'auto')
+                    try:
+                        r = subprocess.run(cmd, capture_output=True,
+                                           timeout=shutter_ms / 1000 + 15)
+                        if r.returncode == 0 and os.path.exists(filepath):
+                            stats = self.analyze_jpeg(filepath)
+                            os.remove(filepath)
+                        else:
+                            stats = {'avg': 0, 'noise': 0, 'stars': 0, 'score': 0}
+                    except Exception:
+                        stats = {'avg': 0, 'noise': 0, 'stars': 0, 'score': 0}
+                    results.append({'gain': gain, 'iso': gain_to_iso(gain), **stats})
+        finally:
+            self._capturing = False
+
+        if not results:
+            return {'error': 'calibration failed', 'results': []}
+
+        best = max(results, key=lambda r: r['score'])
+        return {
+            'results': results,
+            'recommended': {
+                'gain': best['gain'],
+                'shutter_ms': shutter_ms,
+                'note': '별이 보이면 노출을 5~30초로 늘려보세요',
+            },
         }

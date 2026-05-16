@@ -62,6 +62,14 @@ def capture():
     return jsonify(result)
 
 
+@app.route('/api/calibrate', methods=['POST'])
+def calibrate():
+    params = request.get_json(silent=True) or {}
+    shutter_ms = float(params.get('shutter_ms', 3000))
+    result = camera.calibrate(shutter_ms=shutter_ms)
+    return jsonify(result)
+
+
 @app.route('/api/photos')
 def list_photos():
     os.makedirs(PHOTOS_DIR, exist_ok=True)
