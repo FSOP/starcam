@@ -164,11 +164,14 @@ def detect_trail(image_data: bytes) -> dict:
             return {'detected': False, 'reason': 'no candidates'}
 
         best = max(candidates, key=lambda x: x['score'])
+        density = best['n'] / max(best['trail_len'], 1.0)
+        MIN_DENSITY = 0.25  # continuous streak ≥0.25 px⁻¹; aligned stars ≈0.05
         ok = (best['lin'] > 0.88
               and best['trail_len'] > 20
               and best['trail_w']   < best['trail_len'] * 0.40
               and best['conc']      > 0.55
-              and MIN_ANGLE < best['angle'] < 90 - MIN_ANGLE)
+              and MIN_ANGLE < best['angle'] < 90 - MIN_ANGLE
+              and density >= MIN_DENSITY)
 
         if ok:
             return {
@@ -180,16 +183,20 @@ def detect_trail(image_data: bytes) -> dict:
                 'concentration':  round(best['conc'], 3),
                 'angle_deg':      round(best['angle'], 1),
                 'n_bright':       best['n'],
+                'density':        round(density, 3),
             }
         reason = f'low linearity (lin={best["lin"]:.2f}, len={best["trail_len"]:.0f}px)'
         if not (MIN_ANGLE < best['angle'] < 90 - MIN_ANGLE):
             reason = f'horizontal/vertical artifact (angle={best["angle"]:.1f}°)'
+        elif density < MIN_DENSITY:
+            reason = f'sparse star alignment (density={density:.3f}, n={best["n"]}, len={best["trail_len"]:.0f}px)'
         return {
             'detected':  False,
             'reason':    reason,
             'linearity': round(best['lin'], 3),
             'angle_deg': round(best['angle'], 1),
             'n_bright':  best['n'],
+            'density':   round(density, 3),
         }
 
     except Exception as e:

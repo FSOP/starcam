@@ -1068,6 +1068,8 @@ class Camera:
                 return {'detected': False, 'reason': '후보 없음'}
 
             best = max(candidates, key=lambda x: x['score'])
+            density = best['n'] / max(best['trail_len'], 1.0)
+            MIN_DENSITY = 0.25  # continuous streak ≥0.25 px⁻¹; aligned stars ≈0.05
 
             detected = (
                 best['lin']       > 0.88
@@ -1075,6 +1077,7 @@ class Camera:
                 and best['trail_w']   < best['trail_len'] * 0.40
                 and best['conc']      > 0.55
                 and MIN_ANGLE < best['angle'] < 90 - MIN_ANGLE
+                and density >= MIN_DENSITY
             )
             if detected:
                 return {
@@ -1086,16 +1089,20 @@ class Camera:
                     'concentration':  round(best['conc'], 3),
                     'angle_deg':      round(best['angle'], 1),
                     'n_bright':       best['n'],
+                    'density':        round(density, 3),
                 }
             reason = f'직선성 부족 (lin={best["lin"]:.2f}, len={best["trail_len"]:.0f}px)'
             if not (MIN_ANGLE < best['angle'] < 90 - MIN_ANGLE):
                 reason = f'수평/수직 아티팩트 제외 (angle={best["angle"]:.1f}°)'
+            elif density < MIN_DENSITY:
+                reason = f'별 직선 배열 (density={density:.3f}, n={best["n"]}, len={best["trail_len"]:.0f}px)'
             return {
                 'detected':  False,
                 'reason':    reason,
                 'linearity': round(best['lin'], 3),
                 'angle_deg': round(best['angle'], 1),
                 'n_bright':  best['n'],
+                'density':   round(density, 3),
             }
         except Exception as e:
             return {'detected': False, 'reason': str(e)}
