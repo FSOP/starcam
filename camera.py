@@ -1226,7 +1226,7 @@ class Camera:
 
     def _scout_loop(self):
         """Ring-buffer scout: continuous short-exposure capture with pre/post trigger saving."""
-        shutter_ms = float(self._scout_params.get('shutter_ms', 200))
+        shutter_ms = float(self._scout_params.get('shutter_ms', 1000))
         shutter_us = int(shutter_ms * 1000)
         gain       = float(self._scout_params.get('gain', 8))
         awb        = self._scout_params.get('awb', 'none')
