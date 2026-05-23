@@ -286,7 +286,7 @@ def scout_api():
         action = data.get('action', 'start')
         if action == 'start':
             _default_scout = {
-                'shutter_ms': 1000, 'gain': 8, 'awb': 'none',
+                'shutter_ms': 500, 'gain': 8, 'awb': 'none',
                 'saturation': 0, 'sharpness': 1.5, 'contrast': 1.0, 'quality': 95,
                 'pre_frames': 8, 'post_frames': 15,
             }
