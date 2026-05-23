@@ -2091,7 +2091,11 @@ async function toggleScout() {
         stop_at_utc:  document.getElementById('scout-stop-at').value  || null}),
     }).then(r => r.json());
     applyScoutStatus(d);
-    showToast(_scoutOn ? '🔭 감시 촬영 시작' : '감시 촬영 중지');
+    if (_scoutOn) {
+      showToast(`🔭 감시 시작 — ${scoutParams.shutter_ms}ms · gain ${scoutParams.gain} · pre ${scoutParams.pre_frames} / post ${scoutParams.post_frames}`, 4000);
+    } else {
+      showToast('감시 촬영 중지');
+    }
   } catch(_) { _scoutOn = !_scoutOn; showToast('오류'); }
   finally { btn.disabled = false; }
 }
