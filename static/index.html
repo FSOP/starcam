@@ -321,6 +321,24 @@
     .l-meta { font-size: 10px; color: var(--dim); margin-top: 2px; }
     .l-gps { font-size: 9px; background: rgba(61,220,132,.85); color: #000; font-weight: 700; padding: 2px 5px; border-radius: 3px; flex-shrink: 0; }
 
+    /* ── Ring event cards ──────────────────────────────────── */
+    .ring-card { grid-column: 1 / -1; background: var(--surface); border-radius: 10px; overflow: hidden; border: 1px solid rgba(99,179,237,.22); }
+    .ring-card-header { display: flex; align-items: center; gap: 8px; padding: 7px 10px; cursor: pointer; user-select: none; }
+    .ring-card-header:hover { background: rgba(255,255,255,.05); }
+    .ring-card-thumb { width: 72px; height: 54px; border-radius: 5px; object-fit: cover; flex-shrink: 0; background: var(--surface2); }
+    .ring-card-info { flex: 1; min-width: 0; }
+    .ring-card-title { font-size: 12px; color: var(--text); font-weight: 600; }
+    .ring-card-meta { font-size: 10px; color: var(--dim); margin-top: 2px; }
+    .ring-badge { font-size: 9px; background: rgba(99,179,237,.85); color: #000; font-weight: 700; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
+    .ring-det-badge { font-size: 9px; background: rgba(255,180,0,.9); color: #000; font-weight: 700; padding: 2px 5px; border-radius: 4px; flex-shrink: 0; }
+    .ring-expand-btn { font-size: 11px; color: var(--dim); flex-shrink: 0; transition: transform .2s; }
+    .ring-card.open .ring-expand-btn { transform: rotate(90deg); }
+    .ring-card-body { display: none; padding: 0 8px 8px; }
+    .ring-card.open .ring-card-body { display: block; }
+    .ring-inner-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .g-item.ring-hit { outline: 1px solid rgba(255,180,0,.7); }
+    .ring-card-sel { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+
     /* ── GPS panel ───────────────────────────────────────────── */
     .gps-section { background: var(--surface); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
     .gps-section-title { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
@@ -1434,37 +1452,118 @@ async function loadGallery() {
 function renderGallery() {
   const c = document.getElementById('gallery-container');
   if (!allPhotos.length) { c.innerHTML = '<div class="empty">사진 없음</div>'; return; }
+  c.className = galleryViewMode === 'grid' ? 'gallery-grid' : 'gallery-list';
 
+  // Group ring-buffer photos by ring_event tag; preserve mtime order
+  const ringGroups = new Map();
+  const orderedItems = [];
+  for (const p of allPhotos) {
+    const ev = p.metadata && p.metadata.ring_event;
+    if (ev) {
+      if (!ringGroups.has(ev)) {
+        ringGroups.set(ev, []);
+        orderedItems.push({type: 'ring', key: ev});
+      }
+      ringGroups.get(ev).push(p);
+    } else {
+      orderedItems.push({type: 'photo', p});
+    }
+  }
+
+  c.innerHTML = orderedItems.map(item =>
+    item.type === 'photo' ? renderPhotoItem(item.p) : renderRingCard(item.key, ringGroups.get(item.key))
+  ).join('');
+
+  // Restore indeterminate state for ring card checkboxes
+  ringGroups.forEach((photos, key) => {
+    const safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cb = document.querySelector(`#rc_${safeKey} .ring-card-sel`);
+    if (!cb) return;
+    const sel = photos.filter(p => selectedPhotos.has(p.filename)).length;
+    cb.indeterminate = sel > 0 && sel < photos.length;
+  });
+}
+
+function renderPhotoItem(p) {
   if (galleryViewMode === 'grid') {
-    c.className = 'gallery-grid';
-    c.innerHTML = allPhotos.map(p => {
-      const lbl = p.filename.replace('star_','').replace(/\.jpg$/,'').replace(/_(\d{3})$/,' #$1');
-      const sel = selectedPhotos.has(p.filename);
-      return `<div class="g-item${sel ? ' selected' : ''}" data-fn="${p.filename}" onclick="gridClick(event,'${p.filename}')">
-        <div class="g-check-wrap"><input type="checkbox" class="g-check" ${sel ? 'checked' : ''}
-          onchange="toggleSel('${p.filename}',this.checked)" onclick="event.stopPropagation()"></div>
-        <img src="/api/photos/${p.filename}/thumb" loading="lazy" onerror="this.src='/api/photos/${p.filename}'">
-        ${p.has_gps ? '<span class="gps-badge">GPS</span>' : ''}
-        <div class="g-info">${lbl}</div>
-      </div>`;
-    }).join('');
+    const lbl = p.filename.replace('star_','').replace(/\.jpg$/,'').replace(/_(\d{3})$/,' #$1');
+    const sel = selectedPhotos.has(p.filename);
+    return `<div class="g-item${sel ? ' selected' : ''}" data-fn="${p.filename}" onclick="gridClick(event,'${p.filename}')">
+      <div class="g-check-wrap"><input type="checkbox" class="g-check" ${sel ? 'checked' : ''}
+        onchange="toggleSel('${p.filename}',this.checked)" onclick="event.stopPropagation()"></div>
+      <img src="/api/photos/${p.filename}/thumb" loading="lazy" onerror="this.src='/api/photos/${p.filename}'">
+      ${p.has_gps ? '<span class="gps-badge">GPS</span>' : ''}
+      <div class="g-info">${lbl}</div>
+    </div>`;
   } else {
-    c.className = 'gallery-list';
-    c.innerHTML = allPhotos.map(p => {
-      const date = new Date(p.mtime * 1000).toLocaleString('ko', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-      const size = p.size > 1048576 ? (p.size/1048576).toFixed(1) + ' MB' : Math.round(p.size/1024) + ' KB';
-      const sel  = selectedPhotos.has(p.filename);
-      return `<div class="l-item${sel ? ' selected' : ''}" data-fn="${p.filename}" onclick="listClick(event,'${p.filename}')">
-        <input type="checkbox" class="l-check" ${sel ? 'checked' : ''}
-          onchange="toggleSel('${p.filename}',this.checked)" onclick="event.stopPropagation()">
-        <img class="l-thumb" src="/api/photos/${p.filename}/thumb" loading="lazy" onerror="this.src='/api/photos/${p.filename}'">
-        <div class="l-info">
-          <div class="l-name">${p.filename}</div>
-          <div class="l-meta">${date} · ${size}</div>
-        </div>
-        ${p.has_gps ? '<span class="l-gps">GPS</span>' : ''}
-      </div>`;
-    }).join('');
+    const date = new Date(p.mtime * 1000).toLocaleString('ko', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const size = p.size > 1048576 ? (p.size/1048576).toFixed(1) + ' MB' : Math.round(p.size/1024) + ' KB';
+    const sel  = selectedPhotos.has(p.filename);
+    return `<div class="l-item${sel ? ' selected' : ''}" data-fn="${p.filename}" onclick="listClick(event,'${p.filename}')">
+      <input type="checkbox" class="l-check" ${sel ? 'checked' : ''}
+        onchange="toggleSel('${p.filename}',this.checked)" onclick="event.stopPropagation()">
+      <img class="l-thumb" src="/api/photos/${p.filename}/thumb" loading="lazy" onerror="this.src='/api/photos/${p.filename}'">
+      <div class="l-info">
+        <div class="l-name">${p.filename}</div>
+        <div class="l-meta">${date} · ${size}</div>
+      </div>
+      ${p.has_gps ? '<span class="l-gps">GPS</span>' : ''}
+    </div>`;
+  }
+}
+
+function renderRingCard(eventKey, photos) {
+  // Sort frames by ring_seq so they display in order
+  const sorted = [...photos].sort((a, b) => ((a.metadata||{}).ring_seq||0) - ((b.metadata||{}).ring_seq||0));
+  const trigger = sorted.find(p => p.metadata && p.metadata.detection) || sorted[0];
+  const date = new Date(trigger.mtime * 1000).toLocaleString('ko', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const det = trigger.metadata && trigger.metadata.detection;
+  const detMeta = det ? `lin=${det.linearity} · ${det.trail_len_px}px` : '';
+  const allSel = photos.every(p => selectedPhotos.has(p.filename));
+  const someSel = photos.some(p => selectedPhotos.has(p.filename));
+  const safeKey = eventKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  const innerPhotos = sorted.map(p => {
+    const seq  = (p.metadata && p.metadata.ring_seq != null) ? p.metadata.ring_seq : '';
+    const isHit = !!(p.metadata && p.metadata.detection);
+    const sel  = selectedPhotos.has(p.filename);
+    return `<div class="g-item${sel ? ' selected' : ''}${isHit ? ' ring-hit' : ''}" data-fn="${p.filename}" onclick="gridClick(event,'${p.filename}')">
+      <div class="g-check-wrap"><input type="checkbox" class="g-check" ${sel ? 'checked' : ''}
+        onchange="toggleSel('${p.filename}',this.checked)" onclick="event.stopPropagation()"></div>
+      <img src="/api/photos/${p.filename}/thumb" loading="lazy" onerror="this.src='/api/photos/${p.filename}'">
+      ${isHit ? '<span class="ring-det-badge" style="position:absolute;top:5px;right:5px">HIT</span>' : ''}
+      <div class="g-info">#${seq}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="ring-card" id="rc_${safeKey}">
+    <div class="ring-card-header" onclick="toggleRingCard('${safeKey}')">
+      <input type="checkbox" class="ring-card-sel" ${allSel ? 'checked' : ''}
+        onchange="toggleRingGroupSel('${eventKey}',this.checked)" onclick="event.stopPropagation()">
+      <img class="ring-card-thumb" src="/api/photos/${trigger.filename}/thumb" loading="lazy">
+      <div class="ring-card-info">
+        <div class="ring-card-title">📡 링 이벤트 · ${date}</div>
+        <div class="ring-card-meta">${photos.length}장${detMeta ? ' · ' + detMeta : ''}</div>
+      </div>
+      ${det ? '<span class="ring-det-badge">감지</span>' : ''}
+      <span class="ring-badge">${photos.length}f</span>
+      <span class="ring-expand-btn">▶</span>
+    </div>
+    <div class="ring-card-body">
+      <div class="ring-inner-grid">${innerPhotos}</div>
+    </div>
+  </div>`;
+}
+
+function toggleRingCard(safeKey) {
+  document.getElementById('rc_' + safeKey).classList.toggle('open');
+}
+
+function toggleRingGroupSel(eventKey, checked) {
+  for (const p of allPhotos) {
+    if (p.metadata && p.metadata.ring_event === eventKey) {
+      toggleSel(p.filename, checked);
+    }
   }
 }
 
