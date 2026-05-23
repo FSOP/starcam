@@ -15,35 +15,93 @@
     html, body { height: 100%; overflow: hidden; }
     body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; flex-direction: column; }
 
-    /* Header */
-    header { background: var(--surface); padding: 7px 12px 0; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+    /* ── Header ──────────────────────────────────────────────── */
+    header { background: var(--surface); padding: 7px 14px 0; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,.04); }
     .hdr-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
     .logo { font-size: 14px; font-weight: 700; letter-spacing: 3px; }
     .ph-count { font-size: 11px; color: var(--dim); }
     .chips { display: flex; gap: 5px; flex-wrap: wrap; padding-bottom: 7px; }
     .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 2px 7px; border-radius: 20px; background: var(--surface2); color: var(--dim); white-space: nowrap; }
+    .chip.clickable { cursor: pointer; }
+    .ci { font-size: 11px; line-height: 1; }
     .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--dim); flex-shrink: 0; }
-    .chip.ok .dot { background: var(--ok); } .chip.warn .dot { background: var(--warn); } .chip.err .dot { background: var(--err); }
-    .chip.gps-fix .dot { background: var(--ok); } .chip.gps-conn .dot { background: var(--warn); }
+    .chip.ok .dot { background: var(--ok); }
+    .chip.warn .dot { background: var(--warn); }
+    .chip.err .dot { background: var(--err); }
+    .chip.gps-fix .dot { background: var(--ok); }
+    .chip.gps-conn .dot { background: var(--warn); }
+    .chip-temp-warn { color: var(--warn) !important; }
+    .chip-temp-err  { color: var(--err)  !important; }
 
-    /* Tabs */
+    /* ── Schedule banner ─────────────────────────────────────── */
+    .sched-banner { display: none; background: rgba(74,127,255,.15); border-bottom: 1px solid rgba(74,127,255,.3); padding: 6px 14px; flex-shrink: 0; font-size: 12px; color: var(--accent); text-align: center; letter-spacing: .5px; }
+    .sched-banner.show { display: block; }
+
+    /* ── Tabs ────────────────────────────────────────────────── */
     .tabs { display: flex; background: var(--surface); flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,.04); }
     .tab { flex: 1; padding: 8px; text-align: center; font-size: 13px; color: var(--dim); cursor: pointer; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; }
     .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-    /* Panels */
+    /* ── Panels ──────────────────────────────────────────────── */
     .panels { flex: 1; position: relative; overflow: hidden; }
-    .panel { display: none; position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; }
-    #panel-capture.active { display: flex; flex-direction: column; }
-    #panel-gallery.active { display: block; padding: 10px; }
+    .panel { display: none; position: absolute; inset: 0; }
+    #panel-gallery.active, #panel-gps.active { display: block; overflow-y: auto; overflow-x: hidden; padding: 10px; }
+    #panel-capture.active { display: flex; flex-direction: column; overflow: hidden; }
 
-    /* Preview */
-    .preview-wrap { width: 100%; height: 25vh; min-height: 120px; max-height: 220px; background: #000; flex-shrink: 0; position: relative; overflow: hidden; }
+    /* ── Capture layout ──────────────────────────────────────── */
+    .capture-layout { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+    .capture-left  { flex-shrink: 0; display: flex; flex-direction: column; position: relative; }
+    .capture-right { flex: 1; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
+
+    /* ── Splitter (mobile: horizontal drag bar) ──────────────── */
+    .splitter {
+      height: 8px; background: var(--surface2); cursor: row-resize; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .splitter::after { content: ''; display: block; width: 32px; height: 2px; background: var(--dim); border-radius: 1px; }
+    .splitter:hover { background: rgba(74,127,255,.2); }
+    .splitter:hover::after { background: var(--accent); }
+
+    /* ── Preview ─────────────────────────────────────────────── */
+    .preview-wrap {
+      width: 100%; background: #000; flex-shrink: 0;
+      position: relative; overflow: hidden;
+      height: var(--preview-h, 38vh);
+      min-height: 120px;
+    }
     .preview-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
-    .p-overlay { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: rgba(0,0,0,.8); font-size: 13px; color: var(--text); }
+
+    /* camera-off overlay */
+    .cam-off-overlay {
+      display: none; position: absolute; inset: 0;
+      align-items: center; justify-content: center; flex-direction: column;
+      gap: 12px; background: rgba(0,0,0,.92);
+    }
+    .cam-off-overlay.show { display: flex; }
+    .cam-on-big-btn {
+      padding: 14px 32px; background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff; border: none; border-radius: 14px; font-size: 16px; font-weight: 700;
+      cursor: pointer; transition: opacity .15s;
+    }
+    .cam-on-big-btn:hover { opacity: .85; }
+    .cam-off-icon { font-size: 48px; opacity: .4; }
+
+    /* capture overlay (busy) */
+    .p-overlay { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: rgba(0,0,0,.75); font-size: 13px; color: var(--text); pointer-events: none; }
     .p-overlay.show { display: flex; }
 
-    /* Settings */
+    /* ratio presets overlay */
+    .ratio-btns {
+      position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; z-index: 10;
+    }
+    .ratio-btn {
+      padding: 3px 8px; font-size: 10px; border-radius: 12px;
+      background: rgba(0,0,0,.6); color: var(--dim); border: 1px solid rgba(255,255,255,.15);
+      cursor: pointer; transition: all .15s; backdrop-filter: blur(4px);
+    }
+    .ratio-btn.active { background: rgba(74,127,255,.7); color: #fff; border-color: var(--accent); }
+
+    /* ── Settings ────────────────────────────────────────────── */
     .settings { padding: 8px 12px; display: flex; flex-direction: column; gap: 7px; flex-shrink: 0; }
     .row { display: flex; align-items: center; gap: 7px; min-height: 34px; }
     .lbl { font-size: 11px; color: var(--dim); width: 52px; flex-shrink: 0; }
@@ -54,31 +112,169 @@
     .num-in:focus { outline: none; border-color: var(--accent); background: #1e2440; }
     .num-in::-webkit-outer-spin-button, .num-in::-webkit-inner-spin-button { -webkit-appearance: none; }
     .unit { font-size: 10px; color: var(--dim); white-space: nowrap; }
+    .step-btn { width: 26px; height: 26px; background: var(--surface2); color: var(--accent); border: 1px solid rgba(74,127,255,.25); border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; line-height: 1; transition: background .1s; }
+    .step-btn:active { background: rgba(74,127,255,.2); }
     select.awb { flex: 1; background: var(--surface2); color: var(--text); border: 1px solid transparent; padding: 5px 8px; border-radius: 6px; font-size: 13px; cursor: pointer; }
     select.awb:focus { outline: none; border-color: var(--accent); }
-
-    /* Advanced settings toggle */
     .adv-toggle { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 4px 0; }
-    .adv-toggle .lbl { color: var(--accent); }
     .adv-arrow { font-size: 10px; color: var(--accent); transition: transform .2s; }
     .adv-arrow.open { transform: rotate(180deg); }
     .adv-body { display: none; flex-direction: column; gap: 7px; }
     .adv-body.open { display: flex; }
 
-    /* Progress */
+
+    /* ── Sky events ──────────────────────────────────────────── */
+    .sky-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .sky-table td { padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .sky-table td:first-child { color: var(--dim); width: 52%; }
+    .sky-table td:last-child  { text-align: right; font-variant-numeric: tabular-nums; letter-spacing: .5px; }
+    .sky-table tr:last-child td { border-bottom: none; }
+    .sky-half-title { font-size: 10px; color: var(--accent); text-transform: uppercase;
+                      letter-spacing: 1px; margin: 10px 0 6px; }
+    .sky-half-title:first-child { margin-top: 0; }
+    .leo-box { margin-top: 12px; background: rgba(255,200,0,.07); border-radius: 8px;
+               padding: 10px 12px; }
+    .leo-title { font-size: 10px; color: #ffc400; text-transform: uppercase;
+                 letter-spacing: 1px; margin-bottom: 8px; }
+    .leo-row   { display: flex; justify-content: space-between; font-size: 12px;
+                 padding: 3px 0; }
+    .leo-row span:first-child { color: var(--dim); }
+    .leo-note  { font-size: 10px; color: var(--dim); margin-top: 8px; line-height: 1.6; }
+    .preview-info { position: absolute; bottom: 40px; left: 8px;
+      background: rgba(0,0,0,.52); color: rgba(255,255,255,.88);
+      font-size: 11px; padding: 2px 8px; border-radius: 4px;
+      font-variant-numeric: tabular-nums; pointer-events: none; z-index: 5; }
+    .preset-bar { display:flex; gap:5px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+    .preset-n-btn {
+      width:40px; height:40px; border-radius:8px; font-size:1.15em; font-weight:700;
+      border:2px solid rgba(255,255,255,.15); background:var(--card); color:var(--dim);
+      cursor:pointer; transition:border-color .15s, color .15s, background .15s; flex-shrink:0; }
+    .preset-n-btn.has-data {
+      border-color:var(--accent); color:var(--accent); background:rgba(74,127,255,.15); }
+    .preset-n-btn.active {
+      border-color:var(--accent); color:#fff; background:rgba(74,127,255,.35); }
+    .preset-n-btn:hover { filter:brightness(1.25); }
+    .preset-act-btn { height:40px; border-radius:8px; font-size:0.82em; font-weight:600;
+      padding:0 10px; cursor:pointer; white-space:nowrap; border:2px solid; }
+    .preset-act-btn.save { border-color:var(--accent); color:var(--accent);
+      background:rgba(74,127,255,.12); }
+    .preset-act-btn.save:hover { background:rgba(74,127,255,.30); }
+    .preset-act-btn.del { border-color:#c03c3c; color:#e06060;
+      background:rgba(200,60,60,.10); }
+    .preset-act-btn.del:hover { background:rgba(200,60,60,.25); }
+    .sky-strip { font-size: 11px; padding: 7px 0 5px;
+      border-top: 1px solid rgba(255,255,255,.06); line-height: 1.9; }
+    .sw-label { color: var(--dim); }
+    .sw-time  { color: var(--accent); font-variant-numeric: tabular-nums; }
+    /* auto-trigger */
+    .trig-wrap { display:flex; flex-direction:column; gap:6px;
+      padding:8px 0; border-top:1px solid rgba(255,255,255,.06); }
+    .trig-top  { display:flex; align-items:center; gap:8px; }
+    .trig-btn  { flex:1; padding:8px 0; background:rgba(255,255,255,.07);
+      border:1px solid rgba(255,255,255,.15); border-radius:8px;
+      color:#ccc; font-size:12px; cursor:pointer; transition:.2s; }
+    .trig-btn.on { background:rgba(76,175,80,.22); border-color:#4caf50; color:#4caf50; }
+    .trig-dot  { font-size:11px; color:var(--dim); white-space:nowrap; }
+    .trig-dot.on { color:#4caf50; }
+    .trig-cfg  { display:none; flex-direction:column; gap:5px; }
+    .trig-cfg.open { display:flex; }
+    .trig-hint { font-size:10px; color:var(--dim); line-height:1.6; }
+
+    /* ── 자동탭 ─────────────────────────────────────────────── */
+    #panel-auto.active { display: block; overflow-y: auto; padding: 12px; }
+    .auto-card { background: rgba(255,255,255,.04); border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.08); padding: 14px 16px; margin-bottom: 14px; }
+    .auto-card-title { font-size: 12px; color: var(--accent); text-transform: uppercase;
+      letter-spacing: 1px; margin-bottom: 12px; display: flex;
+      align-items: center; justify-content: space-between; }
+    .auto-toggle-btn { padding: 6px 18px; border-radius: 20px; font-size: 12px;
+      cursor: pointer; border: 1px solid rgba(255,255,255,.2);
+      background: rgba(255,255,255,.07); color: #ccc; transition: .2s; }
+    .auto-toggle-btn.on { background: rgba(76,175,80,.25);
+      border-color: #4caf50; color: #4caf50; }
+    .auto-status { font-size: 11px; color: var(--dim); margin-bottom: 10px; }
+    .auto-status.on { color: #4caf50; }
+    .auto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .auto-field { display: flex; flex-direction: column; gap: 4px; }
+    .auto-field label { font-size: 10px; color: var(--dim); }
+    .auto-field input { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+      border-radius: 6px; color: #eee; font-size: 13px; padding: 6px 8px;
+      width: 100%; box-sizing: border-box; }
+    .auto-hint { font-size: 10px; color: var(--dim); line-height: 1.7;
+      margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.06); }
+    .scout-time-row { display:flex; align-items:center; gap:12px; margin:8px 0 2px; flex-wrap:wrap; }
+    .scout-time-row .scout-time-item { display:flex; align-items:center; gap:6px; }
+    .scout-time-row label { font-size:10px; color:var(--dim); white-space:nowrap; }
+    .scout-time-row input[type=time] { background:rgba(255,255,255,.07);
+      color:var(--text); border:1px solid rgba(255,255,255,.12); border-radius:4px;
+      padding:3px 8px; font-size:12px; width:90px; }
+    .scout-stop-at-info { font-size:10px; color:var(--warn); }
+    .twilight-btn { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15);
+      color:var(--dim); border-radius:4px; padding:3px 9px; font-size:11px; cursor:pointer;
+      white-space:nowrap; }
+    .twilight-btn:hover { background:rgba(255,255,255,.14); color:var(--text); }
+    .chip-led { cursor:pointer; user-select:none; }
+    .chip-led.off { opacity:.5; }
+    .trig-shoot-badge { position:absolute; top:10px; left:50%; transform:translateX(-50%);
+      background:rgba(210,30,30,.92); color:#fff; padding:5px 18px; border-radius:16px;
+      font-size:12px; font-weight:bold; display:none; z-index:10; white-space:nowrap;
+      animation:trig-pulse .9s ease-in-out infinite; }
+    .trig-shoot-badge.show { display:block; }
+    @keyframes trig-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+    .auto-sens-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .auto-sens-row label { font-size: 10px; color: var(--dim); white-space: nowrap; }
+    .auto-sens-row input[type=range] { flex: 1; }
+    .auto-sens-val { font-size: 12px; min-width: 28px; text-align: right; }
+    .per-next { font-size: 11px; color: var(--dim); margin-top: 6px; }
+    .scout-detect-badge {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,180,120,.92); color: #fff; padding: 5px 18px;
+      border-radius: 16px; font-size: 12px; font-weight: bold;
+      display: none; z-index: 10; white-space: nowrap;
+      animation: trig-pulse .9s ease-in-out infinite;
+    }
+    .scout-detect-badge.show { display: block; }
+
+    /* schedule section */
+    .sched-section { border-top: 1px solid rgba(255,255,255,.06); padding-top: 8px; }
+    .sched-row { display: flex; align-items: center; gap: 7px; min-height: 34px; }
+    .sched-label { font-size: 11px; color: var(--accent); width: 52px; flex-shrink: 0; }
+    .time-in { background: var(--surface2); color: var(--accent); border: 1px solid rgba(74,127,255,.3); border-radius: 6px; padding: 5px 8px; font-size: 14px; font-weight: 600; font-family: monospace; width: 110px; text-align: center; }
+    .time-in:focus { outline: none; border-color: var(--accent); }
+    .sched-set-btn { padding: 6px 14px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+    .sched-set-btn:hover { opacity: .85; }
+    .sched-cancel-btn { padding: 6px 10px; background: none; color: var(--err); border: 1px solid rgba(255,77,109,.4); border-radius: 8px; font-size: 12px; cursor: pointer; }
+
+    /* ── Progress ────────────────────────────────────────────── */
     .progress { height: 3px; background: var(--surface2); flex-shrink: 0; overflow: hidden; display: none; }
     .progress.show { display: block; }
     .pfill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0; transition: width .4s; }
 
-    /* Buttons */
-    .capture-btn { margin: 6px 12px 0; padding: 14px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; letter-spacing: 2px; cursor: pointer; flex-shrink: 0; transition: opacity .15s; }
-    .capture-btn:active { opacity: .8; }
-    .capture-btn:disabled { opacity: .4; cursor: not-allowed; }
-    .cal-btn { margin: 6px 12px 10px; padding: 10px; background: var(--surface2); color: var(--dim); border: 1px solid rgba(74,127,255,.3); border-radius: 10px; font-size: 13px; cursor: pointer; flex-shrink: 0; transition: all .15s; }
-    .cal-btn:hover { color: var(--accent); border-color: var(--accent); }
+    /* ── Buttons ─────────────────────────────────────────────── */
+    .capture-btn {
+      margin: 6px 12px 0; padding: 15px;
+      background: linear-gradient(135deg, #3a6fff, #6a3fff);
+      color: #fff; border: none; border-radius: 12px;
+      font-size: 17px; font-weight: 800; letter-spacing: 2px; cursor: pointer; flex-shrink: 0;
+      transition: opacity .15s, transform .1s;
+      box-shadow: 0 4px 20px rgba(74,127,255,.4);
+    }
+    .capture-btn:active { opacity: .85; transform: scale(.98); }
+    .capture-btn:disabled { opacity: .35; cursor: not-allowed; transform: none; box-shadow: none; }
+    .cal-btn {
+      margin: 6px 12px 4px; padding: 10px;
+      background: none; color: var(--dim);
+      border: 1px solid rgba(74,127,255,.35); border-radius: 10px;
+      font-size: 13px; cursor: pointer; flex-shrink: 0; transition: all .15s;
+    }
+    .cal-btn:hover { color: var(--accent); border-color: var(--accent); background: rgba(74,127,255,.07); }
     .cal-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .cam-power-btn { margin: 4px 12px 8px; padding: 9px; background: var(--surface2); color: var(--dim); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; font-size: 12px; cursor: pointer; flex-shrink: 0; transition: all .15s; }
+    .cam-power-btn.on  { color: var(--err); border-color: rgba(255,77,109,.4); }
+    .cam-power-btn.off { color: var(--ok);  border-color: rgba(61,220,132,.4); }
+    .cam-power-btn:disabled { opacity: .4; cursor: not-allowed; }
 
-    /* Calibration results */
+    /* ── Cal results ─────────────────────────────────────────── */
     .cal-result { margin: 0 12px 10px; background: var(--surface); border-radius: 10px; padding: 10px 12px; display: none; flex-shrink: 0; }
     .cal-result.show { display: block; }
     .cal-title { font-size: 11px; color: var(--dim); margin-bottom: 8px; }
@@ -90,15 +286,60 @@
     .cal-table tr.best td { color: var(--ok); font-weight: 700; }
     .cal-rec { margin-top: 8px; padding: 6px 8px; background: rgba(61,220,132,.1); border-radius: 6px; font-size: 11px; color: var(--ok); }
 
-    /* Gallery */
+    /* ── Gallery toolbar ─────────────────────────────────────── */
+    .gallery-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .view-toggle { display: flex; border: 1px solid var(--surface2); border-radius: 7px; overflow: hidden; }
+    .view-btn { padding: 5px 12px; font-size: 12px; background: none; border: none; color: var(--dim); cursor: pointer; transition: all .15s; }
+    .view-btn.active { background: var(--accent); color: #fff; }
+    .sel-bar { display: none; align-items: center; gap: 8px; margin-left: auto; }
+    .sel-bar.show { display: flex; }
+    .sel-count { font-size: 11px; color: var(--dim); }
+    .sel-all-btn { font-size: 11px; color: var(--accent); background: none; border: none; cursor: pointer; padding: 4px 8px; }
+    .sel-dl-btn  { font-size: 11px; color: #fff; background: var(--accent); border: none; border-radius: 6px; cursor: pointer; padding: 5px 12px; }
+    .sel-del-btn { font-size: 11px; color: #fff; background: var(--err); border: none; border-radius: 6px; cursor: pointer; padding: 5px 12px; }
+    .sel-clear-btn { font-size: 11px; color: var(--dim); background: none; border: none; cursor: pointer; }
+
+    /* ── Gallery grid ────────────────────────────────────────── */
     .gallery-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .g-item { position: relative; aspect-ratio: 4/3; background: var(--surface); border-radius: 8px; overflow: hidden; cursor: pointer; }
+    .g-item { position: relative; aspect-ratio: 4/3; background: var(--surface); border-radius: 8px; overflow: hidden; cursor: pointer; transition: outline .1s; }
     .g-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .g-item.selected { outline: 2px solid var(--accent); }
+    .g-check-wrap { position: absolute; top: 5px; left: 5px; z-index: 2; }
+    .g-check { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
     .g-info { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.65); padding: 3px 6px; font-size: 10px; color: var(--dim); }
     .gps-badge { position: absolute; top: 5px; right: 5px; background: rgba(61,220,132,.85); color: #000; font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 4px; }
-    .empty { color: var(--dim); font-size: 13px; padding: 24px; text-align: center; }
 
-    /* Modal */
+    /* ── Gallery list ────────────────────────────────────────── */
+    .gallery-list { display: flex; flex-direction: column; gap: 4px; }
+    .l-item { display: flex; align-items: center; gap: 10px; background: var(--surface); border-radius: 8px; padding: 6px 10px; cursor: pointer; transition: background .1s; }
+    .l-item:hover { background: var(--surface2); }
+    .l-item.selected { outline: 1px solid var(--accent); }
+    .l-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+    .l-thumb { width: 72px; height: 54px; border-radius: 5px; object-fit: cover; flex-shrink: 0; background: var(--surface2); }
+    .l-info { flex: 1; min-width: 0; }
+    .l-name { font-size: 11px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: monospace; }
+    .l-meta { font-size: 10px; color: var(--dim); margin-top: 2px; }
+    .l-gps { font-size: 9px; background: rgba(61,220,132,.85); color: #000; font-weight: 700; padding: 2px 5px; border-radius: 3px; flex-shrink: 0; }
+
+    /* ── GPS panel ───────────────────────────────────────────── */
+    .gps-section { background: var(--surface); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+    .gps-section-title { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+    .gps-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 12px; }
+    .gps-row:last-child { border-bottom: none; }
+    .gps-key { color: var(--dim); }
+    .gps-val { color: var(--text); font-weight: 500; font-family: monospace; font-size: 12px; text-align: right; }
+    .gps-val.ok { color: var(--ok); }
+    .gps-val.warn { color: var(--warn); }
+    .gps-val.err { color: var(--err); }
+    .gps-refresh-btn { font-size: 11px; color: var(--accent); background: none; border: none; cursor: pointer; }
+    .nmea-box { background: var(--surface2); border-radius: 6px; padding: 8px 10px; font-family: monospace; font-size: 10px; color: var(--dim); word-break: break-all; min-height: 28px; margin-top: 6px; }
+    .baud-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .baud-btn { padding: 6px 12px; border-radius: 20px; border: 1px solid var(--surface2); background: var(--surface2); color: var(--dim); font-size: 12px; cursor: pointer; transition: all .15s; }
+    .baud-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(74,127,255,.1); }
+    .baud-apply-btn { margin-top: 10px; padding: 8px 18px; border-radius: 8px; border: none; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .baud-apply-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── Modal ───────────────────────────────────────────────── */
     .modal { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.97); flex-direction: column; }
     .modal.open { display: flex; }
     .modal-hdr { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; flex-shrink: 0; }
@@ -113,11 +354,55 @@
     .meta-val { color: var(--text); }
     .modal-actions { display: flex; gap: 8px; padding: 12px 16px; flex-shrink: 0; }
     .btn { flex: 1; padding: 13px; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; }
-    .btn-dl { background: var(--accent); color: #fff; } .btn-del { background: var(--err); color: #fff; }
+    .btn-dl  { background: var(--accent); color: #fff; }
+    .btn-del { background: var(--err);    color: #fff; }
 
-    /* Toast */
+    /* ── Toast ───────────────────────────────────────────────── */
     .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--surface2); color: var(--text); padding: 10px 22px; border-radius: 22px; font-size: 13px; z-index: 200; opacity: 0; transition: opacity .3s; white-space: nowrap; pointer-events: none; }
     .toast.show { opacity: 1; }
+    .empty { color: var(--dim); font-size: 13px; padding: 24px; text-align: center; }
+
+    /* ── PC responsive (≥ 900px) ─────────────────────────────── */
+    @media (min-width: 900px) {
+      header { padding: 8px 20px 0; }
+      .chips { gap: 8px; }
+      .chip { font-size: 11px; padding: 3px 10px; }
+      .logo { font-size: 16px; }
+      .ph-count { font-size: 12px; }
+
+      /* 2-column layout */
+      .capture-layout { flex-direction: row; }
+      .capture-left {
+        flex: 0 0 var(--left-w, 420px);
+        min-width: 200px;
+        border-right: 1px solid rgba(255,255,255,.05);
+        overflow: hidden;
+      }
+      .preview-wrap {
+        flex: 1;
+        height: 0;
+        min-height: 0;
+        max-height: none;
+      }
+      .capture-right { flex: 1; min-width: 0; }
+
+      /* splitter becomes vertical on PC */
+      .splitter {
+        width: 8px; height: auto;
+        cursor: col-resize; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        border-right: 1px solid rgba(255,255,255,.05);
+        border-left: none; border-top: none; border-bottom: none;
+      }
+      .splitter::after { content: ''; display: block; width: 2px; height: 32px; background: var(--dim); border-radius: 1px; }
+
+      .gallery-grid { grid-template-columns: repeat(4, 1fr); }
+      .gallery-toolbar { flex-wrap: nowrap; }
+    }
+    @media (min-width: 1400px) {
+      .capture-left { flex: 0 0 var(--left-w, 520px); }
+      .gallery-grid { grid-template-columns: repeat(5, 1fr); }
+    }
   </style>
 </head>
 <body>
@@ -128,173 +413,400 @@
     <span class="ph-count" id="ph-count"></span>
   </div>
   <div class="chips">
-    <span class="chip" id="chip-cam"><span class="dot"></span><span id="lbl-cam">카메라</span></span>
-    <span class="chip gps-none" id="chip-gps"><span class="dot"></span><span id="lbl-gps">GPS 없음</span></span>
-    <span class="chip" id="chip-temp"><span class="dot"></span><span id="lbl-temp">--°C</span></span>
-    <span class="chip" id="chip-disk"><span class="dot"></span><span id="lbl-disk">디스크</span></span>
+    <span class="chip" id="chip-cam"><span class="ci">📷</span><span class="dot"></span><span id="lbl-cam">카메라</span></span>
+    <span class="chip clickable gps-none" id="chip-gps" onclick="switchTab('gps')"><span class="ci">⊕</span><span class="dot"></span><span id="lbl-gps">GPS 없음</span></span>
+    <span class="chip" id="chip-temp"><span class="ci">🌡</span><span class="dot"></span><span id="lbl-temp">--°C</span></span>
+    <span class="chip" id="chip-disk"><span class="ci">💾</span><span class="dot"></span><span id="lbl-disk">디스크</span></span>
+    <span class="chip chip-led" id="chip-led" onclick="toggleLeds()" title="LED 켜기/끄기"><span class="ci">💡</span><span id="lbl-led">LED</span></span>
   </div>
 </header>
+
+<div class="sched-banner" id="sched-banner"></div>
 
 <div class="tabs">
   <div class="tab active" id="tab-btn-capture" onclick="switchTab('capture')">촬영</div>
   <div class="tab" id="tab-btn-gallery" onclick="switchTab('gallery')">갤러리</div>
+  <div class="tab" id="tab-btn-gps" onclick="switchTab('gps')">GPS</div>
 </div>
 
 <div class="panels">
+
+  <!-- ── Capture Panel ─────────────────────────────────────── -->
   <div class="panel active" id="panel-capture">
+    <div class="capture-layout" id="capture-layout">
 
-    <div class="preview-wrap">
-      <img id="preview" src="/stream" alt="" onerror="handleStreamErr()">
-      <div class="p-overlay" id="p-overlay">
-        <span id="overlay-msg"></span>
-      </div>
-    </div>
+      <!-- Left: preview -->
+      <div class="capture-left" id="capture-left">
+        <div class="preview-wrap" id="preview-wrap">
+          <img id="preview" src="/stream" alt="" onerror="handleStreamErr()">
 
-    <div class="settings">
-
-      <!-- 노출 -->
-      <div class="row">
-        <span class="lbl">노출</span>
-        <input type="range" id="sl-shutter" min="0" max="1000" step="1" value="731"
-               oninput="onShutterSlider(this.value)">
-        <div class="num-wrap">
-          <input type="number" class="num-in" id="in-shutter" value="5000"
-                 min="1" max="120000" inputmode="numeric" oninput="onShutterInput(this.value)">
-          <span class="unit" id="unit-shutter">= 5s</span>
-        </div>
-      </div>
-
-      <!-- 게인/ISO -->
-      <div class="row">
-        <span class="lbl">게인</span>
-        <input type="range" id="sl-gain" min="1" max="16" step="0.5" value="8"
-               oninput="onGainSlider(this.value)">
-        <div class="num-wrap">
-          <input type="number" class="num-in" id="in-gain" value="8"
-                 min="1" max="16" step="0.5" inputmode="decimal" oninput="onGainInput(this.value)">
-          <span class="unit" id="unit-gain">≈ISO800</span>
-        </div>
-      </div>
-
-      <!-- AWB -->
-      <div class="row">
-        <span class="lbl">WB</span>
-        <select class="awb" id="s-awb">
-          <option value="auto">자동</option>
-          <option value="incandescent">백열등</option>
-          <option value="tungsten">텅스텐</option>
-          <option value="fluorescent">형광등</option>
-          <option value="indoor">실내</option>
-          <option value="daylight">주광</option>
-          <option value="cloudy">흐림</option>
-        </select>
-      </div>
-
-      <!-- 장수 -->
-      <div class="row">
-        <span class="lbl">장수</span>
-        <input type="range" id="sl-count" min="1" max="20" step="1" value="1"
-               oninput="syncInput('count', this.value)">
-        <div class="num-wrap">
-          <input type="number" class="num-in" id="in-count" value="1"
-                 min="1" max="20" step="1" inputmode="numeric"
-                 oninput="syncSlider('count', this.value, 1, 20)">
-          <span class="unit">장</span>
-        </div>
-      </div>
-
-      <!-- 간격 -->
-      <div class="row">
-        <span class="lbl">간격</span>
-        <input type="range" id="sl-interval" min="1" max="60" step="1" value="3"
-               oninput="syncInput('interval', this.value)">
-        <div class="num-wrap">
-          <input type="number" class="num-in" id="in-interval" value="3"
-                 min="1" max="60" step="1" inputmode="numeric"
-                 oninput="syncSlider('interval', this.value, 1, 60)">
-          <span class="unit">s</span>
-        </div>
-      </div>
-
-      <!-- 고급 설정 토글 -->
-      <div class="adv-toggle" onclick="toggleAdv()">
-        <span class="lbl" style="color:var(--accent)">고급 설정</span>
-        <span class="adv-arrow" id="adv-arrow">▼</span>
-      </div>
-      <div class="adv-body" id="adv-body">
-
-        <!-- 채도 (0=흑백, 1=일반, 2=선명) -->
-        <div class="row">
-          <span class="lbl">채도</span>
-          <input type="range" id="sl-sat" min="0" max="2" step="0.1" value="1.0"
-                 oninput="syncInput('sat', this.value)">
-          <input type="number" class="num-in" id="in-sat" value="1.0"
-                 min="0" max="2" step="0.1" inputmode="decimal"
-                 oninput="syncSlider('sat', this.value, 0, 2)">
-        </div>
-
-        <!-- 선명도 -->
-        <div class="row">
-          <span class="lbl">선명도</span>
-          <input type="range" id="sl-sharp" min="0" max="4" step="0.1" value="1.5"
-                 oninput="syncInput('sharp', this.value)">
-          <input type="number" class="num-in" id="in-sharp" value="1.5"
-                 min="0" max="4" step="0.1" inputmode="decimal"
-                 oninput="syncSlider('sharp', this.value, 0, 4)">
-        </div>
-
-        <!-- 대비 -->
-        <div class="row">
-          <span class="lbl">대비</span>
-          <input type="range" id="sl-con" min="0.5" max="2" step="0.1" value="1.0"
-                 oninput="syncInput('con', this.value)">
-          <input type="number" class="num-in" id="in-con" value="1.0"
-                 min="0.5" max="2" step="0.1" inputmode="decimal"
-                 oninput="syncSlider('con', this.value, 0.5, 2)">
-        </div>
-
-        <!-- JPEG 품질 -->
-        <div class="row">
-          <span class="lbl">품질</span>
-          <input type="range" id="sl-qual" min="75" max="99" step="1" value="95"
-                 oninput="syncInput('qual', this.value)">
-          <div class="num-wrap">
-            <input type="number" class="num-in" id="in-qual" value="95"
-                   min="75" max="99" step="1" inputmode="numeric"
-                   oninput="syncSlider('qual', this.value, 75, 99)">
-            <span class="unit">%</span>
+          <!-- ratio presets overlay -->
+          <div class="ratio-btns">
+            <button class="ratio-btn active" onclick="setRatio('4:3')">4:3</button>
+            <button class="ratio-btn" onclick="setRatio('16:9')">16:9</button>
+            <button class="ratio-btn" onclick="setRatio('fill')">꽉 찬</button>
           </div>
+
+          <!-- camera-off overlay -->
+          <div class="cam-off-overlay" id="cam-off-overlay">
+            <span class="cam-off-icon">⏻</span>
+            <button class="cam-on-big-btn" onclick="toggleCamera()">카메라 켜기</button>
+          </div>
+
+          <!-- busy overlay -->
+          <div class="p-overlay" id="p-overlay"><span id="overlay-msg"></span></div>
+          <div class="preview-info" id="preview-info">5s</div>
+          <div class="trig-shoot-badge"   id="trig-shoot-badge">🛰 감지됨 &mdash; 촬영 중</div>
+          <div class="scout-detect-badge" id="scout-detect-badge">🔭 궤적 감지 &mdash; 연속 촬영 중</div>
+        </div>
+        <button class="cam-power-btn on" id="cam-power-btn" onclick="toggleCamera()"
+                title="카메라 센서를 실제로 끕니다 (libcamera 세션 종료)">
+          ⏻ 카메라 끄기
+        </button>
+      </div>
+
+      <!-- Splitter -->
+      <div class="splitter" id="splitter"></div>
+
+      <!-- Right: controls -->
+      <div class="capture-right" id="capture-right">
+        <!-- ── 프리셋 ──────────────────────────────────────── -->
+        <div class="preset-bar">
+          <span style="font-size:0.78em;color:var(--dim);margin-right:2px;white-space:nowrap">프리셋</span>
+          <button class="preset-n-btn" id="pb-1" onclick="presetClick(1)" oncontextmenu="presetRightClick(1,event)">1</button>
+          <button class="preset-n-btn" id="pb-2" onclick="presetClick(2)" oncontextmenu="presetRightClick(2,event)">2</button>
+          <button class="preset-n-btn" id="pb-3" onclick="presetClick(3)" oncontextmenu="presetRightClick(3,event)">3</button>
+          <button class="preset-n-btn" id="pb-4" onclick="presetClick(4)" oncontextmenu="presetRightClick(4,event)">4</button>
+          <button class="preset-n-btn" id="pb-5" onclick="presetClick(5)" oncontextmenu="presetRightClick(5,event)">5</button>
+          <button class="preset-act-btn save" id="preset-overwrite-btn" onclick="presetOverwrite()" style="display:none" title="선택된 슬롯에 덮어쓰기">💾</button>
+          <button class="preset-act-btn del"  id="preset-del-btn"       onclick="presetDelete()"    style="display:none" title="선택된 프리셋 삭제">✕ 삭제</button>
+        </div>
+        <div class="settings">
+
+          <!-- Shutter with ÷2 / ×2 step buttons -->
+          <div class="row">
+            <span class="lbl">노출</span>
+            <button class="step-btn" onclick="stepShutter(0.5)" title="÷2">÷2</button>
+            <input type="range" id="sl-shutter" min="0" max="1000" step="1" value="731" oninput="onShutterSlider(this.value)">
+            <button class="step-btn" onclick="stepShutter(2)" title="×2">×2</button>
+            <div class="num-wrap">
+              <input type="number" class="num-in" id="in-shutter" value="5000" min="1" max="120000" inputmode="numeric" oninput="onShutterInput(this.value)">
+              <span class="unit" id="unit-shutter">= 5s</span>
+            </div>
+          </div>
+
+          <!-- Gain with −0.5 / +0.5 step buttons -->
+          <div class="row">
+            <span class="lbl">게인</span>
+            <button class="step-btn" onclick="stepGain(-0.5)">−</button>
+            <input type="range" id="sl-gain" min="1" max="16" step="0.5" value="8" oninput="onGainSlider(this.value)">
+            <button class="step-btn" onclick="stepGain(+0.5)">+</button>
+            <div class="num-wrap">
+              <input type="number" class="num-in" id="in-gain" value="8" min="1" max="16" step="0.5" inputmode="decimal" oninput="onGainInput(this.value)">
+              <span class="unit" id="unit-gain">≈ISO800</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <span class="lbl">WB</span>
+            <select class="awb" id="s-awb">
+              <option value="none">AWB 끄기 ★</option>
+              <option value="auto">자동</option>
+              <option value="daylight">주광</option>
+              <option value="cloudy">흐림</option>
+            </select>
+          </div>
+
+          <div class="row">
+            <span class="lbl">장수</span>
+            <input type="range" id="sl-count" min="1" max="20" step="1" value="1" oninput="syncInput('count', this.value)">
+            <div class="num-wrap">
+              <input type="number" class="num-in" id="in-count" value="1" min="1" max="20" step="1" inputmode="numeric" oninput="syncSlider('count', this.value, 1, 20)">
+              <span class="unit">장</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <span class="lbl">간격</span>
+            <input type="range" id="sl-interval" min="0" max="60" step="0.5" value="1" oninput="syncInput('interval', this.value)">
+            <div class="num-wrap">
+              <input type="number" class="num-in" id="in-interval" value="1" min="0" max="60" step="0.5" inputmode="decimal" oninput="syncSlider('interval', this.value, 0, 60)">
+              <span class="unit">s</span>
+            </div>
+          </div>
+
+          <!-- GPS scheduled shooting -->
+          <div class="sched-section">
+            <div class="sched-row">
+              <span class="sched-label">GPS 예약</span>
+              <input type="text" class="time-in" id="sched-time" placeholder="HH:MM:SS" maxlength="8" oninput="fmtTimeInput(this)">
+              <button class="sched-set-btn" id="sched-set-btn" onclick="setSchedule()">예약</button>
+              <button class="sched-cancel-btn" id="sched-cancel-btn" onclick="cancelSchedule()" style="display:none">취소</button>
+            </div>
+          </div>
+
+          <div class="sky-strip" id="sky-strip"></div>
+
+
+          <div class="adv-toggle" onclick="toggleAdv()">
+            <span class="lbl" style="color:var(--accent)">고급 설정</span>
+            <span class="adv-arrow" id="adv-arrow">▼</span>
+          </div>
+          <div class="adv-body" id="adv-body">
+            <div class="row">
+              <span class="lbl">프리뷰 노출<span style="font-size:10px;color:var(--dim);margin-left:4px;">(최대)</span></span>
+              <input type="range" id="sl-prev-exp" min="200" max="5000" step="200" value="2000" oninput="syncInput('prev-exp', this.value); applyPreviewExp(this.value)">
+              <div class="num-wrap">
+                <input type="number" class="num-in" id="in-prev-exp" value="2000" min="200" max="5000" step="200" inputmode="numeric" oninput="syncSlider('prev-exp', this.value, 200, 5000); applyPreviewExp(this.value)">
+                <span class="unit">ms</span>
+              </div>
+            </div>
+            <div class="row">
+              <span class="lbl">채도<span style="font-size:10px;color:var(--dim);margin-left:4px;">(0=흑백)</span></span>
+              <input type="range" id="sl-sat" min="0" max="2" step="0.1" value="0" oninput="syncInput('sat', this.value)">
+              <input type="number" class="num-in" id="in-sat" value="0" min="0" max="2" step="0.1" inputmode="decimal" oninput="syncSlider('sat', this.value, 0, 2)">
+            </div>
+            <div class="row">
+              <span class="lbl">선명도</span>
+              <input type="range" id="sl-sharp" min="0" max="4" step="0.1" value="1.5" oninput="syncInput('sharp', this.value)">
+              <input type="number" class="num-in" id="in-sharp" value="1.5" min="0" max="4" step="0.1" inputmode="decimal" oninput="syncSlider('sharp', this.value, 0, 4)">
+            </div>
+            <div class="row">
+              <span class="lbl">대비</span>
+              <input type="range" id="sl-con" min="0.5" max="2" step="0.1" value="1.0" oninput="syncInput('con', this.value)">
+              <input type="number" class="num-in" id="in-con" value="1.0" min="0.5" max="2" step="0.1" inputmode="decimal" oninput="syncSlider('con', this.value, 0.5, 2)">
+            </div>
+            <div class="row">
+              <span class="lbl">품질</span>
+              <input type="range" id="sl-qual" min="75" max="99" step="1" value="95" oninput="syncInput('qual', this.value)">
+              <div class="num-wrap">
+                <input type="number" class="num-in" id="in-qual" value="95" min="75" max="99" step="1" inputmode="numeric" oninput="syncSlider('qual', this.value, 75, 99)">
+                <span class="unit">%</span>
+              </div>
+            </div>
+            <div class="row" style="justify-content:space-between;align-items:center">
+              <span class="lbl">FPN 보정 <span style="font-size:10px;color:var(--dim)">(수평 줄 노이즈 제거)</span></span>
+              <button class="auto-toggle-btn" id="fpn-toggle-btn" onclick="toggleFpn()">ON</button>
+            </div>
+          </div>
+
+        </div><!-- /settings -->
+
+        <div class="progress" id="progress"><div class="pfill" id="pfill"></div></div>
+        <button class="capture-btn" id="capture-btn" onclick="doCapture()">★ 촬영</button>
+        <button class="cal-btn" id="cal-btn" onclick="doCalibrate()">🔍 자동 게인 보정 (3s×4회)</button>
+
+        <!-- ── 자동 촬영 ───────────────────────────────────── -->
+        <div class="adv-toggle" onclick="toggleAutoSect()" style="margin-top:6px">
+          <span class="lbl" style="color:var(--accent)">🛰 자동 촬영</span>
+          <span class="adv-arrow" id="auto-sect-arrow">▼</span>
+        </div>
+        <div class="adv-body" id="auto-sect-body">
+
+          <!-- ── 감시 촬영 (이미지 분석) ──────────────────── -->
+          <div class="auto-card">
+            <div class="auto-card-title">
+              <span>🔭 감시 촬영 <span style="font-size:10px;color:var(--dim)">(이미지 분석)</span></span>
+              <button class="auto-toggle-btn" id="scout-toggle-btn" onclick="toggleScout()">OFF</button>
+            </div>
+            <div class="auto-status" id="scout-status">● 대기 중</div>
+
+            <div style="font-size:10px;color:var(--accent);margin:8px 0 4px;letter-spacing:.5px">탐지 프레임</div>
+            <div class="auto-grid">
+              <div class="auto-field"><label>노출 (ms)</label>
+                <input type="number" id="scout-shutter" value="200" min="50" max="2000" step="50"></div>
+              <div class="auto-field"><label>게인</label>
+                <input type="number" id="scout-gain" value="8" min="1" max="16" step="0.5"></div>
+            </div>
+
+            <div style="font-size:10px;color:var(--warn);margin:10px 0 4px;letter-spacing:.5px">링 버퍼 (궤도결정용)</div>
+            <div class="auto-grid">
+              <div class="auto-field"><label>이전 프레임</label>
+                <input type="number" id="scout-pre-frames" value="8" min="1" max="30"></div>
+              <div class="auto-field"><label>이후 프레임</label>
+                <input type="number" id="scout-post-frames" value="15" min="1" max="60"></div>
+              <div class="auto-field"><label>&nbsp;</label>
+                <span id="scout-last" style="font-size:10px;color:var(--dim);padding-top:8px;display:block">마지막: —</span>
+              </div>
+            </div>
+            <div class="scout-time-row">
+              <div class="scout-time-item">
+                <label>UTC 시작</label>
+                <input type="time" id="scout-start-at" value="" title="비워두면 즉시 시작">
+              </div>
+              <div class="scout-time-item">
+                <label>UTC 종료</label>
+                <input type="time" id="scout-stop-at" value="" title="비워두면 수동 종료">
+              </div>
+              <button class="twilight-btn" onclick="fillTwilight('evening')" title="저녁박명: 시민황혼~천문황혼 (위성 가시 최적)">저녁</button>
+              <button class="twilight-btn" onclick="fillTwilight('night')"   title="천문 야간: 완전 암흑 전체">밤새</button>
+              <button class="twilight-btn" onclick="fillTwilight('morning')" title="새벽박명: 천문새벽~시민새벽 (위성 가시 최적)">새벽</button>
+              <span class="scout-stop-at-info" id="scout-stop-at-info"></span>
+            </div>
+            <div class="auto-hint">링 버퍼: 항상 촬영 중 → 탐지 시 이전 N장 + 이후 N장을 한번에 저장. 같은 각도 반복(구름·은하수) 자동 억제.</div>
+          </div>
+
+          <div class="auto-card">
+            <div class="auto-card-title">
+              <span>위성 자동 감지</span>
+              <button class="auto-toggle-btn" id="trig-toggle-btn" onclick="toggleTrig()">OFF</button>
+            </div>
+            <div class="auto-status" id="trig-auto-status">● 대기 중</div>
+            <div class="auto-sens-row">
+              <label>감도</label>
+              <input type="range" id="trig-sens" min="5" max="80" step="5" value="30"
+                     oninput="document.getElementById('trig-sens-val').textContent=this.value">
+              <span class="auto-sens-val" id="trig-sens-val">30</span>
+            </div>
+            <div class="auto-grid">
+              <div class="auto-field"><label>노출 (ms)</label>
+                <input type="number" id="trig-shutter" value="5000" min="100" max="120000" step="100"></div>
+              <div class="auto-field"><label>게인</label>
+                <input type="number" id="trig-gain" value="8" min="1" max="16" step="0.5"></div>
+              <div class="auto-field"><label>장수</label>
+                <input type="number" id="trig-count" value="5" min="1" max="20"></div>
+              <div class="auto-field"><label>간격 (초)</label>
+                <input type="number" id="trig-interval" value="0.5" min="0" max="30" step="0.5"></div>
+            </div>
+            <div class="auto-hint">프리뷰 밝기 변화로 이동 물체 감지. 감지 후 즉시 촬영. 쿨다운 15초.</div>
+          </div>
+
+          <div class="auto-card" style="margin-bottom:0">
+            <div class="auto-card-title">
+              <span>🕐 주기 촬영</span>
+              <button class="auto-toggle-btn" id="per-toggle-btn" onclick="togglePeriodic()">OFF</button>
+            </div>
+            <div class="auto-status" id="per-auto-status">● 대기 중</div>
+            <div class="auto-grid">
+              <div class="auto-field"><label>간격 (분)</label>
+                <input type="number" id="per-interval-min" value="10" min="1" max="1440"></div>
+              <div class="auto-field"><label>노출 (ms)</label>
+                <input type="number" id="per-shutter" value="5000" min="100" max="120000" step="100"></div>
+              <div class="auto-field"><label>게인</label>
+                <input type="number" id="per-gain" value="8" min="1" max="16" step="0.5"></div>
+              <div class="auto-field"><label>장수</label>
+                <input type="number" id="per-count" value="1" min="1" max="20"></div>
+            </div>
+            <div class="per-next" id="per-next"></div>
+          </div>
+
+        </div><!-- /auto-sect-body -->
+
+        <!-- ── 연속 촬영 ───────────────────────────────────── -->
+        <div class="adv-toggle" onclick="toggleBurstSect()" style="margin-top:6px">
+          <span class="lbl" style="color:#f93">📸 연속 촬영</span>
+          <span class="adv-arrow" id="burst-sect-arrow">▼</span>
+        </div>
+        <div class="adv-body" id="burst-sect-body">
+          <div class="auto-card" style="margin-bottom:0">
+            <div class="auto-card-title">
+              <span>⏱ 간격 없이 연속 촬영</span>
+              <button class="auto-toggle-btn" id="burst-toggle-btn" onclick="toggleBurst()">시작</button>
+            </div>
+            <div class="auto-status" id="burst-status">● 대기 중</div>
+            <div class="auto-grid">
+              <div class="auto-field"><label>노출 (ms)</label>
+                <input type="number" id="b-shutter" value="450" min="1" max="30000" step="50"></div>
+              <div class="auto-field"><label>게인</label>
+                <input type="number" id="b-gain" value="10.5" min="1" max="16" step="0.5"></div>
+              <div class="auto-field"><label>AWB</label>
+                <select id="b-awb">
+                  <option value="none">없음</option>
+                  <option value="auto" selected>자동</option>
+                  <option value="daylight">주간</option>
+                  <option value="cloudy">흐림</option>
+                  <option value="tungsten">텅스텐</option>
+                </select></div>
+              <div class="auto-field"><label>촬영 시간 (분)</label>
+                <input type="number" id="b-duration" value="60" min="1" max="720"></div>
+            </div>
+            <div class="auto-hint">카메라를 still 모드로 전환해 간격 없이 연속 촬영합니다. 파일명: star_..._burst.jpg</div>
+          </div>
+        </div><!-- /burst-sect-body -->
+
+        <div class="cal-result" id="cal-result">
+          <div class="cal-title">자동 보정 결과</div>
+          <table class="cal-table">
+            <thead><tr><th>게인</th><th>ISO</th><th>배경</th><th>노이즈</th><th>별</th><th>점수</th></tr></thead>
+            <tbody id="cal-tbody"></tbody>
+          </table>
+          <div class="cal-rec" id="cal-rec"></div>
         </div>
 
-      </div><!-- /adv-body -->
-    </div><!-- /settings -->
-
-    <div class="progress" id="progress"><div class="pfill" id="pfill"></div></div>
-
-    <button class="capture-btn" id="capture-btn" onclick="doCapture()">★ 촬영</button>
-    <button class="cal-btn" id="cal-btn" onclick="doCalibrate()">🔍 자동 게인 보정 (3s×4회 테스트)</button>
-
-    <!-- 자동 보정 결과 -->
-    <div class="cal-result" id="cal-result">
-      <div class="cal-title">자동 보정 결과</div>
-      <table class="cal-table">
-        <thead>
-          <tr>
-            <th>게인</th><th>ISO</th><th>배경밝기</th><th>노이즈</th><th>별 픽셀</th><th>점수</th>
-          </tr>
-        </thead>
-        <tbody id="cal-tbody"></tbody>
-      </table>
-      <div class="cal-rec" id="cal-rec"></div>
-    </div>
-
+      </div><!-- /capture-right -->
+    </div><!-- /capture-layout -->
   </div><!-- /panel-capture -->
 
+  <!-- ── Gallery Panel ─────────────────────────────────────── -->
   <div class="panel" id="panel-gallery">
-    <div class="gallery-grid" id="gallery-grid"></div>
+    <div class="gallery-toolbar">
+      <div class="view-toggle">
+        <button class="view-btn active" id="btn-grid" onclick="setGalleryView('grid')" title="그리드 보기">⊞</button>
+        <button class="view-btn" id="btn-list" onclick="setGalleryView('list')" title="목록 보기">≡</button>
+      </div>
+      <div class="sel-bar" id="sel-bar">
+        <span class="sel-count" id="sel-count">0개 선택</span>
+        <button class="sel-all-btn" onclick="selectAll()">전체</button>
+        <button class="sel-dl-btn" id="sel-dl-btn" onclick="downloadSelected()">⬇ ZIP</button>
+        <button class="sel-del-btn" id="sel-del-btn" onclick="deleteSelected()">삭제</button>
+        <button class="sel-clear-btn" onclick="clearSelection()">✕</button>
+      </div>
+    </div>
+    <div id="gallery-container"></div>
   </div>
-</div>
 
+  <!-- ── GPS Panel ─────────────────────────────────────────── -->
+  <div class="panel" id="panel-gps">
+    <div class="gps-section">
+      <div class="gps-section-title">
+        <span>연결 상태</span>
+        <button class="gps-refresh-btn" onclick="loadGpsDetail()">↻ 새로고침</button>
+      </div>
+      <div class="gps-row"><span class="gps-key">상태</span><span class="gps-val" id="gd-status">—</span></div>
+      <div class="gps-row"><span class="gps-key">포트</span><span class="gps-val" id="gd-port">—</span></div>
+      <div class="gps-row"><span class="gps-key">Baud Rate</span><span class="gps-val" id="gd-baud">—</span></div>
+      <div class="gps-row"><span class="gps-key">Fix 품질</span><span class="gps-val" id="gd-quality">—</span></div>
+      <div class="gps-row"><span class="gps-key">위성 수</span><span class="gps-val" id="gd-sats">—</span></div>
+      <div class="gps-row"><span class="gps-key">HDOP</span><span class="gps-val" id="gd-hdop">—</span></div>
+    </div>
+    <div class="gps-section">
+      <div class="gps-section-title"><span>위치 및 시각</span></div>
+      <div class="gps-row"><span class="gps-key">위도</span><span class="gps-val" id="gd-lat">—</span></div>
+      <div class="gps-row"><span class="gps-key">경도</span><span class="gps-val" id="gd-lon">—</span></div>
+      <div class="gps-row"><span class="gps-key">고도</span><span class="gps-val" id="gd-alt">—</span></div>
+      <div class="gps-row"><span class="gps-key">속도</span><span class="gps-val" id="gd-speed">—</span></div>
+      <div class="gps-row"><span class="gps-key">방위각</span><span class="gps-val" id="gd-course">—</span></div>
+      <div class="gps-row"><span class="gps-key">UTC 시각</span><span class="gps-val" id="gd-time">—</span></div>
+      <div class="gps-row"><span class="gps-key">UTC 날짜</span><span class="gps-val" id="gd-date">—</span></div>
+    </div>
+    <div class="gps-section" id="sky-section">
+      <div class="gps-section-title">
+        <span>🌌 박명 &amp; 위성 관측 시간</span>
+        <span style="font-size:10px;color:var(--dim);cursor:pointer" onclick="loadSkyEvents()">새로고침</span>
+      </div>
+      <div id="sky-body"><span style="color:var(--dim);font-size:12px">GPS 위치 수신 후 계산됩니다…</span></div>
+    </div>
+    <div class="gps-section">
+      <div class="gps-section-title"><span>Baud Rate 설정</span></div>
+      <p style="font-size:11px;color:var(--dim);margin-bottom:8px;">변경 후 앱이 자동으로 재연결합니다. 일반적으로 9600 bps.</p>
+      <div class="baud-row" id="baud-btns"></div>
+      <button class="baud-apply-btn" id="baud-apply" onclick="applyBaud()">적용</button>
+    </div>
+    <div class="gps-section">
+      <div class="gps-section-title"><span>마지막 NMEA</span></div>
+      <div class="nmea-box" id="gd-nmea">—</div>
+    </div>
+    <div class="gps-section">
+      <div class="gps-section-title"><span>탐색 포트</span></div>
+      <div id="gd-ports" style="font-size:11px;color:var(--dim);line-height:2;font-family:monospace;"></div>
+    </div>
+  </div><!-- /panel-gps -->
+
+
+
+</div><!-- /panels -->
+
+<!-- ── Photo Modal ────────────────────────────────────────── -->
 <div class="modal" id="modal">
   <div class="modal-hdr">
     <span class="modal-fname" id="modal-fname"></span>
@@ -311,282 +823,1332 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  /* ── Shutter log scale ── */
-  const L0 = Math.log10(1), L1 = Math.log10(120000);
-  const slToMs = v  => Math.round(Math.pow(10, L0 + (L1 - L0) * v / 1000));
-  const msToSl = ms => Math.round((Math.log10(Math.max(1, ms)) - L0) / (L1 - L0) * 1000);
+/* ═══════════════════════════════════════════════════════════
+   Shutter log scale
+═══════════════════════════════════════════════════════════ */
+const L0 = Math.log10(1), L1 = Math.log10(120000);
+const slToMs = v  => Math.round(Math.pow(10, L0 + (L1 - L0) * v / 1000));
+const msToSl = ms => Math.round((Math.log10(Math.max(1, ms)) - L0) / (L1 - L0) * 1000);
 
-  function fmtMs(ms) {
-    if (ms < 1000) return ms + 'ms';
-    const s = ms / 1000;
-    return '= ' + (s % 1 === 0 ? s : s.toFixed(1)) + 's';
+function fmtMs(ms) {
+  if (ms < 1000) return ms + 'ms';
+  const s = ms / 1000;
+  return '= ' + (s % 1 === 0 ? s : s.toFixed(1)) + 's';
+}
+function onShutterSlider(v) {
+  const ms = slToMs(+v);
+  document.getElementById('in-shutter').value = ms;
+  document.getElementById('unit-shutter').textContent = fmtMs(ms);
+}
+function onShutterInput(v) {
+  const ms = Math.max(1, Math.min(120000, +v || 1));
+  document.getElementById('sl-shutter').value = msToSl(ms);
+  document.getElementById('unit-shutter').textContent = fmtMs(ms);
+}
+function stepShutter(factor) {
+  const cur = Math.max(1, +document.getElementById('in-shutter').value || 5000);
+  const next = Math.max(1, Math.min(120000, Math.round(cur * factor)));
+  document.getElementById('in-shutter').value = next;
+  document.getElementById('sl-shutter').value = msToSl(next);
+  document.getElementById('unit-shutter').textContent = fmtMs(next);
+}
+
+function gainToIso(g) { return Math.round(g * 100 / 50) * 50; }
+function onGainSlider(v) {
+  document.getElementById('in-gain').value = v;
+  document.getElementById('unit-gain').textContent = '≈ISO' + gainToIso(+v);
+}
+function onGainInput(v) {
+  const g = Math.max(1, Math.min(16, +v || 1));
+  document.getElementById('sl-gain').value = g;
+  document.getElementById('unit-gain').textContent = '≈ISO' + gainToIso(g);
+}
+function stepGain(delta) {
+  const cur = +document.getElementById('in-gain').value || 8;
+  const next = Math.max(1, Math.min(16, +(cur + delta).toFixed(1)));
+  document.getElementById('in-gain').value = next;
+  document.getElementById('sl-gain').value = next;
+  document.getElementById('unit-gain').textContent = '≈ISO' + gainToIso(next);
+}
+
+function syncInput(key, v)          { document.getElementById('in-' + key).value = v; }
+function syncSlider(key, v, mn, mx) { document.getElementById('sl-' + key).value = Math.max(mn, Math.min(mx, +v || mn)); }
+
+function toggleAdv() {
+  const open = document.getElementById('adv-body').classList.toggle('open');
+  document.getElementById('adv-arrow').classList.toggle('open', open);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Preview ratio presets
+═══════════════════════════════════════════════════════════ */
+let currentRatio = '4:3';
+
+function setRatio(ratio) {
+  currentRatio = ratio;
+  document.querySelectorAll('.ratio-btn').forEach((b, i) => {
+    b.classList.toggle('active', ['4:3','16:9','fill'][i] === ratio);
+  });
+  applyRatio();
+}
+
+function applyRatio() {
+  const wrap = document.getElementById('preview-wrap');
+  const isPC = window.innerWidth >= 900;
+
+  if (isPC) {
+    /* PC: height is flex-controlled; adjust object-fit */
+    const img = document.getElementById('preview');
+    if (currentRatio === 'fill') {
+      img.style.objectFit = 'cover';
+    } else {
+      img.style.objectFit = 'contain';
+    }
+    /* Adjust left-column width to enforce ratio */
+    const layout = document.getElementById('capture-layout');
+    const availH = layout.clientHeight;
+    if (currentRatio === '4:3') {
+      const w = Math.round(availH * 4 / 3);
+      document.documentElement.style.setProperty('--left-w', Math.min(w, 640) + 'px');
+    } else if (currentRatio === '16:9') {
+      const w = Math.round(availH * 16 / 9);
+      document.documentElement.style.setProperty('--left-w', Math.min(w, 820) + 'px');
+    } else {
+      document.documentElement.style.setProperty('--left-w', '50%');
+    }
+  } else {
+    /* Mobile: change preview-wrap height */
+    const img = document.getElementById('preview');
+    img.style.objectFit = currentRatio === 'fill' ? 'cover' : 'contain';
+    const vw = window.innerWidth;
+    if (currentRatio === '4:3')   document.documentElement.style.setProperty('--preview-h', Math.round(vw * 3/4) + 'px');
+    else if (currentRatio === '16:9') document.documentElement.style.setProperty('--preview-h', Math.round(vw * 9/16) + 'px');
+    else document.documentElement.style.setProperty('--preview-h', '50vh');
   }
-  function onShutterSlider(v) {
-    const ms = slToMs(+v);
-    document.getElementById('in-shutter').value = ms;
-    document.getElementById('unit-shutter').textContent = fmtMs(ms);
-  }
-  function onShutterInput(v) {
-    const ms = Math.max(1, Math.min(120000, +v || 1));
-    document.getElementById('sl-shutter').value = msToSl(ms);
-    document.getElementById('unit-shutter').textContent = fmtMs(ms);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Splitter drag
+═══════════════════════════════════════════════════════════ */
+(function() {
+  const splitter = document.getElementById('splitter');
+  let dragging = false, startPos = 0, startSize = 0;
+
+  splitter.addEventListener('mousedown', startDrag);
+  splitter.addEventListener('touchstart', startDrag, {passive: false});
+
+  function startDrag(e) {
+    dragging = true;
+    const isPC = window.innerWidth >= 900;
+    if (e.type === 'touchstart') {
+      startPos = isPC ? e.touches[0].clientX : e.touches[0].clientY;
+    } else {
+      startPos = isPC ? e.clientX : e.clientY;
+    }
+    const left = document.getElementById('capture-left');
+    startSize = isPC ? left.offsetWidth : left.offsetHeight;
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
   }
 
-  /* ── Gain / ISO ── */
-  function gainToIso(g) { return Math.round(g * 100 / 50) * 50; }
-  function onGainSlider(v) {
-    document.getElementById('in-gain').value = v;
-    document.getElementById('unit-gain').textContent = '≈ISO' + gainToIso(+v);
-  }
-  function onGainInput(v) {
-    const g = Math.max(1, Math.min(16, +v || 1));
-    document.getElementById('sl-gain').value = g;
-    document.getElementById('unit-gain').textContent = '≈ISO' + gainToIso(g);
+  document.addEventListener('mousemove', onDrag);
+  document.addEventListener('touchmove', onDrag, {passive: false});
+
+  function onDrag(e) {
+    if (!dragging) return;
+    const isPC = window.innerWidth >= 900;
+    let cur;
+    if (e.type === 'touchmove') {
+      cur = isPC ? e.touches[0].clientX : e.touches[0].clientY;
+    } else {
+      cur = isPC ? e.clientX : e.clientY;
+    }
+    const delta = cur - startPos;
+    const left = document.getElementById('capture-left');
+    if (isPC) {
+      const newW = Math.max(200, Math.min(startSize + delta, window.innerWidth - 260));
+      document.documentElement.style.setProperty('--left-w', newW + 'px');
+      left.style.flex = '0 0 ' + newW + 'px';
+    } else {
+      const newH = Math.max(120, Math.min(startSize + delta, window.innerHeight * 0.75));
+      document.documentElement.style.setProperty('--preview-h', newH + 'px');
+    }
+    e.preventDefault();
   }
 
-  /* ── Generic sync ── */
-  function syncInput(key, v)          { document.getElementById('in-' + key).value = v; }
-  function syncSlider(key, v, mn, mx) { document.getElementById('sl-' + key).value = Math.max(mn, Math.min(mx, +v || mn)); }
+  document.addEventListener('mouseup', endDrag);
+  document.addEventListener('touchend', endDrag);
+  function endDrag() {
+    dragging = false;
+    document.body.style.userSelect = '';
+  }
+})();
 
-  /* ── Advanced settings toggle ── */
-  function toggleAdv() {
-    const body  = document.getElementById('adv-body');
-    const arrow = document.getElementById('adv-arrow');
-    const open  = body.classList.toggle('open');
-    arrow.classList.toggle('open', open);
+window.addEventListener('resize', () => { applyRatio(); });
+
+/* ═══════════════════════════════════════════════════════════
+   Tabs
+═══════════════════════════════════════════════════════════ */
+function switchTab(name) {
+  ['capture','gallery','gps'].forEach(n => {
+    document.getElementById('tab-btn-' + n).classList.toggle('active', n === name);
+    document.getElementById('panel-' + n).classList.toggle('active', n === name);
+  });
+  if (name === 'gallery') loadGallery();
+  if (name === 'gps')   { loadGpsDetail(); loadSkyEvents(); }
+}
+
+function handleStreamErr() {
+  setTimeout(() => { document.getElementById('preview').src = '/stream?' + Date.now(); }, 3000);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GPS UTC offset tracking
+═══════════════════════════════════════════════════════════ */
+let gpsTimeOffset = 0; /* gpsUtcSec - deviceUtcSec at time of measurement */
+let gpsOffsetValid = false;
+
+function updateGpsOffset(gpsTimeStr) {
+  if (!gpsTimeStr || gpsTimeStr === '—') return;
+  const parts = gpsTimeStr.split(':');
+  if (parts.length < 3) return;
+  const gpsSec = +parts[0] * 3600 + +parts[1] * 60 + +parts[2];
+  const now = new Date();
+  const devSec = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds() + now.getUTCMilliseconds() / 1000;
+  gpsTimeOffset = gpsSec - devSec;
+  /* keep offset in (-43200, +43200) to handle midnight boundary */
+  while (gpsTimeOffset >  43200) gpsTimeOffset -= 86400;
+  while (gpsTimeOffset < -43200) gpsTimeOffset += 86400;
+  gpsOffsetValid = true;
+}
+
+function getCurrentGpsSec() {
+  const now = new Date();
+  const devSec = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds() + now.getUTCMilliseconds() / 1000;
+  return (devSec + (gpsOffsetValid ? gpsTimeOffset : 0) + 86400) % 86400;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GPS Scheduled Shooting
+═══════════════════════════════════════════════════════════ */
+let scheduleEnabled = false;
+let scheduleTargetSec = null;
+let schedTick = null;
+
+function fmtTimeInput(el) {
+  /* auto-insert colons: 6 digits → HH:MM:SS */
+  let raw = el.value.replace(/\D/g, '').slice(0, 6);
+  if (raw.length >= 5) el.value = raw.slice(0,2) + ':' + raw.slice(2,4) + ':' + raw.slice(4,6);
+  else if (raw.length >= 3) el.value = raw.slice(0,2) + ':' + raw.slice(2);
+  else el.value = raw;
+}
+
+function setSchedule() {
+  const val = document.getElementById('sched-time').value.trim();
+  const m = val.match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
+  if (!m) { showToast('HH:MM:SS 형식으로 입력하세요', 3000); return; }
+  const h = +m[1], min = +m[2], s = +m[3];
+  if (h > 23 || min > 59 || s > 59) { showToast('유효하지 않은 시각'); return; }
+  scheduleTargetSec = h * 3600 + min * 60 + s;
+  scheduleEnabled = true;
+  document.getElementById('sched-set-btn').style.display = 'none';
+  document.getElementById('sched-cancel-btn').style.display = '';
+  showToast(`GPS UTC ${val} 예약됨`);
+  startSchedTick();
+}
+
+function cancelSchedule() {
+  scheduleEnabled = false;
+  scheduleTargetSec = null;
+  clearInterval(schedTick);
+  schedTick = null;
+  document.getElementById('sched-set-btn').style.display = '';
+  document.getElementById('sched-cancel-btn').style.display = 'none';
+  document.getElementById('sched-banner').classList.remove('show');
+  showToast('예약 취소됨');
+}
+
+function startSchedTick() {
+  if (schedTick) clearInterval(schedTick);
+  schedTick = setInterval(tickSchedule, 250);
+}
+
+function tickSchedule() {
+  if (!scheduleEnabled || scheduleTargetSec === null) return;
+  const now = getCurrentGpsSec();
+  let diff = scheduleTargetSec - now;
+  /* wrap around midnight */
+  if (diff < -43200) diff += 86400;
+  if (diff > 43200)  diff -= 86400;
+
+  const banner = document.getElementById('sched-banner');
+  const tgt = document.getElementById('sched-time').value;
+
+  if (diff <= 0 && diff > -5) {
+    /* fire! */
+    cancelSchedule();
+    showToast('★ 예약 촬영 실행!');
+    doCapture();
+    return;
   }
 
-  /* ── Tab ── */
-  function switchTab(name) {
-    ['capture','gallery'].forEach(n => {
-      document.getElementById('tab-btn-' + n).classList.toggle('active', n === name);
-      document.getElementById('panel-' + n).classList.toggle('active', n === name);
+  banner.classList.add('show');
+  if (diff > 0) {
+    const hh = Math.floor(diff / 3600), mm = Math.floor((diff % 3600) / 60), ss = Math.floor(diff % 60);
+    const countStr = diff >= 3600 ? `${hh}h ${mm}m ${ss}s` : diff >= 60 ? `${mm}m ${ss}s` : `${ss}s`;
+    banner.textContent = `⏱ 예약 대기 중 — GPS UTC ${tgt} — ${countStr} 후`;
+  } else {
+    banner.textContent = `⏱ 예약 대기 중 — GPS UTC ${tgt}`;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Camera toggle
+═══════════════════════════════════════════════════════════ */
+async function toggleCamera() {
+  const btn = document.getElementById('cam-power-btn');
+  btn.disabled = true;
+  try {
+    const d = await fetch('/api/camera/toggle', {method:'POST'}).then(r => r.json());
+    setCamEnabled(d.enabled);
+    showToast(d.enabled ? '카메라 켜짐' : '카메라 꺼짐 (센서 해제)');
+  } catch (_) { showToast('오류'); }
+  finally { btn.disabled = false; }
+}
+
+function setCamEnabled(enabled) {
+  const btn = document.getElementById('cam-power-btn');
+  btn.className = 'cam-power-btn ' + (enabled ? 'on' : 'off');
+  btn.textContent = enabled ? '⏻ 카메라 끄기' : '⏻ 카메라 켜기';
+  btn.title = enabled
+    ? '카메라 센서를 끕니다 (libcamera 세션 종료 — 전력 절감)'
+    : '카메라 센서를 켭니다';
+  document.getElementById('cam-off-overlay').classList.toggle('show', !enabled);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Status (header chips)
+═══════════════════════════════════════════════════════════ */
+/* ── 프리셋 ──────────────────────────────────────────── */
+const PRESET_KEY = 'starcam_presets';
+const PER_SETTINGS_KEY = 'starcam_per_settings';
+let _activePreset = null;
+
+function _getPresets() {
+  try { return JSON.parse(localStorage.getItem(PRESET_KEY) || '{}'); } catch(_) { return {}; }
+}
+function _savePresets(obj) {
+  localStorage.setItem(PRESET_KEY, JSON.stringify(obj));
+}
+function _readFields() {
+  const v = id => { const el = document.getElementById(id); return el ? el.value : null; };
+  return {
+    shutter:      v('in-shutter'),
+    gain:         v('in-gain'),
+    awb:          v('s-awb'),
+    count:        v('in-count'),
+    interval:     v('in-interval'),
+    prev_exp:     v('in-prev-exp'),
+    sat:          v('in-sat'),
+    sharp:        v('in-sharp'),
+    con:          v('in-con'),
+    qual:         v('in-qual'),
+    trig_sens:    v('trig-sens'),
+    trig_shutter: v('trig-shutter'),
+    trig_gain:    v('trig-gain'),
+    trig_count:   v('trig-count'),
+    trig_interval:v('trig-interval'),
+    per_interval: v('per-interval-min'),
+    per_shutter:  v('per-shutter'),
+    per_gain:     v('per-gain'),
+    per_count:    v('per-count'),
+  };
+}
+function _applyFields(p) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+  set('in-shutter', p.shutter);   if (p.shutter) onShutterInput(p.shutter);
+  set('in-gain',    p.gain);      if (p.gain)    onGainInput(p.gain);
+  set('s-awb',      p.awb);
+  set('in-count',   p.count);     syncSlider('count',    p.count,    1, 20);
+  set('in-interval',p.interval);  syncSlider('interval', p.interval, 0, 60);
+  set('in-prev-exp',p.prev_exp);  syncSlider('prev-exp', p.prev_exp, 200, 5000);
+                                  if (p.prev_exp) applyPreviewExp(p.prev_exp);
+  set('in-sat',     p.sat);       syncSlider('sat',      p.sat,      0, 2);
+  set('in-sharp',   p.sharp);     syncSlider('sharp',    p.sharp,    0, 4);
+  set('in-con',     p.con);       syncSlider('con',      p.con,      0.5, 2);
+  set('in-qual',    p.qual);      syncSlider('qual',     p.qual,     75, 99);
+  set('trig-sens',    p.trig_sens);
+  const sv = document.getElementById('trig-sens-val');
+  if (sv && p.trig_sens != null) sv.textContent = p.trig_sens;
+  set('trig-shutter', p.trig_shutter);
+  set('trig-gain',    p.trig_gain);
+  set('trig-count',   p.trig_count);
+  set('trig-interval',p.trig_interval);
+  set('per-interval-min', p.per_interval);
+  set('per-shutter',      p.per_shutter);
+  set('per-gain',         p.per_gain);
+  set('per-count',        p.per_count);
+}
+function _refreshPresetBtns() {
+  const presets = _getPresets();
+  for (let i = 1; i <= 5; i++) {
+    const btn = document.getElementById('pb-' + i);
+    if (!btn) continue;
+    const has = !!presets[String(i)];
+    btn.classList.toggle('has-data', has);
+    btn.classList.toggle('active', _activePreset === String(i));
+    btn.title = has
+      ? '클릭: 불러오기  |  우클릭: 덮어쓰기/삭제'
+      : '빈 슬롯 — 클릭해서 현재 설정 저장';
+  }
+  const owBtn = document.getElementById('preset-overwrite-btn');
+  const delBtn = document.getElementById('preset-del-btn');
+  const hasActive = _activePreset && !!_getPresets()[_activePreset];
+  if (owBtn)  owBtn.style.display  = hasActive ? '' : 'none';
+  if (delBtn) delBtn.style.display = hasActive ? '' : 'none';
+}
+function presetClick(n) {
+  const key = String(n);
+  const presets = _getPresets();
+  if (presets[key]) {
+    _applyFields(presets[key]);
+    _activePreset = key;
+    _refreshPresetBtns();
+    showToast('프리셋 ' + n + ' 불러옴');
+  } else {
+    presets[key] = _readFields();
+    _savePresets(presets);
+    _activePreset = key;
+    _refreshPresetBtns();
+    showToast('프리셋 ' + n + ' 저장됨');
+  }
+}
+function presetRightClick(n, event) {
+  event.preventDefault();
+  const key = String(n);
+  const presets = _getPresets();
+  if (presets[key]) {
+    _activePreset = key;
+    _refreshPresetBtns();
+  } else {
+    presets[key] = _readFields();
+    _savePresets(presets);
+    _activePreset = key;
+    _refreshPresetBtns();
+    showToast('프리셋 ' + n + ' 저장됨');
+  }
+}
+function presetOverwrite() {
+  if (!_activePreset) return;
+  const presets = _getPresets();
+  presets[_activePreset] = _readFields();
+  _savePresets(presets);
+  _refreshPresetBtns();
+  showToast('프리셋 ' + _activePreset + ' 덮어씌움');
+}
+function presetDelete() {
+  if (!_activePreset) return;
+  if (!confirm('프리셋 ' + _activePreset + '을(를) 삭제할까요?')) return;
+  const presets = _getPresets();
+  delete presets[_activePreset];
+  _savePresets(presets);
+  _activePreset = null;
+  _refreshPresetBtns();
+  showToast('프리셋 삭제됨');
+}
+
+async function fetchStatus() {
+  try {
+    const s = await fetch('/api/status').then(r => r.json());
+    const camEnabled = s.camera_enabled !== false;
+
+    if (!camEnabled) {
+      setChip('chip-cam', 'err', '카메라 꺼짐');
+    } else {
+      setChip('chip-cam', s.camera_connected ? 'ok' : 'warn',
+        s.camera_connected ? '카메라 연결됨' : '카메라 연결중');
+    }
+    setCamEnabled(camEnabled);
+
+    let gCls = '', gTxt = 'GPS 없음';
+    if (s.gps_fix) {
+      gCls = 'gps-fix';
+      gTxt = `GPS Fix (${s.satellites ?? '?'}개)`;
+      updateGpsOffset(s.utc_time || '');
+    } else if (s.gps_connected) {
+      gCls = 'gps-conn'; gTxt = 'GPS 탐색중';
+    }
+    const gc = document.getElementById('chip-gps');
+    gc.className = 'chip clickable ' + gCls;
+    document.getElementById('lbl-gps').textContent = gTxt;
+
+    const t = s.cpu_temp;
+    const tTxt = t != null ? t.toFixed(1) + '°C' : '--°C';
+    const tCls = t >= 60 ? 'err' : t >= 40 ? 'warn' : 'ok';
+    setChip('chip-temp', tCls, tTxt);
+    const tempLbl = document.getElementById('lbl-temp');
+    tempLbl.className = t >= 60 ? 'chip-temp-err' : t >= 40 ? 'chip-temp-warn' : '';
+
+    setChip('chip-disk', s.disk_percent > 90 ? 'err' : s.disk_percent > 75 ? 'warn' : 'ok',
+      (s.disk_free || '--') + ' 여유');
+    document.getElementById('ph-count').textContent = `사진 ${s.photo_count || 0}장`;
+    if (s.auto_trigger) applyTrigStatus(s.auto_trigger);
+    if (s.periodic)     applyPerStatus(s.periodic);
+    if (s.burst)        applyBurstStatus(s.burst);
+    if (s.scout)        applyScoutStatus(s.scout);
+    if (s.fpn_enabled != null) applyFpnBtn(s.fpn_enabled);
+  } catch (_) {}
+}
+
+function setChip(id, cls, txt) {
+  const el = document.getElementById(id);
+  const extra = id === 'chip-gps' ? ' clickable' : '';
+  el.className = 'chip' + extra + ' ' + cls;
+  el.querySelector('span:last-child').textContent = txt;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Capture
+═══════════════════════════════════════════════════════════ */
+let busy = false;
+
+function getParams() {
+  return {
+    shutter:    Math.max(1,  +document.getElementById('in-shutter').value  || 5000),
+    gain:                    +document.getElementById('in-gain').value      || 8,
+    awb:                      document.getElementById('s-awb').value,
+    count:      Math.max(1, +document.getElementById('in-count').value     || 1),
+    interval:   Math.max(0, +document.getElementById('in-interval').value  || 0),
+    saturation:              +document.getElementById('in-sat').value,
+    sharpness:               +document.getElementById('in-sharp').value     || 1.5,
+    contrast:                +document.getElementById('in-con').value       || 1,
+    quality:    Math.round(  +document.getElementById('in-qual').value)     || 95,
+  };
+}
+
+function showBusy(msg) {
+  document.getElementById('overlay-msg').textContent = msg;
+  document.getElementById('p-overlay').classList.add('show');
+  document.getElementById('capture-btn').disabled = true;
+  document.getElementById('cal-btn').disabled = true;
+  busy = true;
+}
+function hideBusy() {
+  const camEnabled = document.getElementById('cam-power-btn').classList.contains('on');
+  document.getElementById('p-overlay').classList.remove('show');
+  document.getElementById('progress').classList.remove('show');
+  document.getElementById('pfill').style.width = '0';
+  document.getElementById('capture-btn').disabled = false;
+  document.getElementById('cal-btn').disabled = false;
+  busy = false;
+}
+
+async function doCapture() {
+  if (busy) return;
+  const p = getParams();
+  const shutterSec = p.shutter / 1000;
+  const total = p.count * shutterSec + Math.max(0, p.count - 1) * p.interval;
+  const isRamBurst = p.count > 1;
+
+  showBusy(`1 / ${p.count}${isRamBurst ? ' (RAM 버퍼링)' : ''}`);
+  document.getElementById('progress').classList.add('show');
+  document.getElementById('pfill').style.width = '5%';
+
+  const t0 = Date.now();
+  const tick = setInterval(() => {
+    const el = (Date.now() - t0) / 1000;
+    const perShot = shutterSec + (p.interval || 0);
+    document.getElementById('pfill').style.width = Math.min(90, el / total * 100) + '%';
+    document.getElementById('overlay-msg').textContent =
+      Math.min(p.count, Math.floor(el / perShot) + 1) + ' / ' + p.count +
+      (isRamBurst ? ' (RAM 버퍼링)' : '');
+  }, 500);
+
+  try {
+    const res = await fetch('/api/capture', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(p)});
+    clearInterval(tick);
+    document.getElementById('pfill').style.width = '100%';
+    const d = await res.json();
+    if (d.saved && d.saved.length)
+      showToast(`✓ ${d.saved.length}장 저장됨` + (d.gps_saved ? ' 📍' : ''));
+    else
+      showToast('촬영 실패: ' + (d.error || '알 수 없는 오류'), 5000);
+  } catch (_) { clearInterval(tick); showToast('서버 연결 오류'); }
+  finally { setTimeout(hideBusy, 800); }
+}
+
+async function doCalibrate() {
+  if (busy) return;
+  const shutterMs = Math.max(1000, +document.getElementById('in-shutter').value || 3000);
+  const testMs = Math.min(shutterMs, 3000);
+  showBusy(`게인 보정 중... (약 ${Math.round(testMs / 1000 * 4 + 4)}초)`);
+  try {
+    const res = await fetch('/api/calibrate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({shutter_ms: testMs})});
+    const d = await res.json();
+    hideBusy();
+    if (d.error) { showToast('보정 실패: ' + d.error, 5000); return; }
+
+    const tbody = document.getElementById('cal-tbody');
+    const bestScore = Math.max(...d.results.map(r => r.score));
+    tbody.innerHTML = d.results.map(r => `
+      <tr class="${r.score === bestScore ? 'best' : ''}">
+        <td>${r.gain}</td><td>ISO${r.iso}</td><td>${r.avg}</td>
+        <td>${r.noise}</td><td>${r.stars.toLocaleString()}</td><td>${r.score}</td>
+      </tr>`).join('');
+    const rec = d.recommended;
+    document.getElementById('cal-rec').textContent =
+      `✓ 권장: 게인 ${rec.gain} (ISO${gainToIso(rec.gain)}) — ${rec.note}`;
+    document.getElementById('cal-result').classList.add('show');
+    document.getElementById('in-gain').value = rec.gain;
+    document.getElementById('sl-gain').value = rec.gain;
+    document.getElementById('unit-gain').textContent = '≈ISO' + gainToIso(rec.gain);
+    showToast(`게인 ${rec.gain} 적용됨`);
+  } catch (_) { hideBusy(); showToast('보정 중 오류'); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Gallery
+═══════════════════════════════════════════════════════════ */
+let galleryViewMode = 'grid';
+let selectedPhotos  = new Set();
+let allPhotos       = [];
+
+function setGalleryView(mode) {
+  galleryViewMode = mode;
+  document.getElementById('btn-grid').classList.toggle('active', mode === 'grid');
+  document.getElementById('btn-list').classList.toggle('active', mode === 'list');
+  renderGallery();
+}
+
+async function loadGallery() {
+  const c = document.getElementById('gallery-container');
+  c.innerHTML = '<div class="empty">불러오는 중...</div>';
+  try {
+    allPhotos = await fetch('/api/photos').then(r => r.json());
+    renderGallery();
+  } catch (_) {
+    c.innerHTML = '<div class="empty" style="color:var(--err)">불러오기 실패</div>';
+  }
+}
+
+function renderGallery() {
+  const c = document.getElementById('gallery-container');
+  if (!allPhotos.length) { c.innerHTML = '<div class="empty">사진 없음</div>'; return; }
+
+  if (galleryViewMode === 'grid') {
+    c.className = 'gallery-grid';
+    c.innerHTML = allPhotos.map(p => {
+      const lbl = p.filename.replace('star_','').replace(/\.jpg$/,'').replace(/_(\d{3})$/,' #$1');
+      const sel = selectedPhotos.has(p.filename);
+      return `<div class="g-item${sel ? ' selected' : ''}" data-fn="${p.filename}" onclick="gridClick(event,'${p.filename}')">
+        <div class="g-check-wrap"><input type="checkbox" class="g-check" ${sel ? 'checked' : ''}
+          onchange="toggleSel('${p.filename}',this.checked)" onclick="event.stopPropagation()"></div>
+        <img src="/api/photos/${p.filename}/thumb" loading="lazy" onerror="this.src='/api/photos/${p.filename}'">
+        ${p.has_gps ? '<span class="gps-badge">GPS</span>' : ''}
+        <div class="g-info">${lbl}</div>
+      </div>`;
+    }).join('');
+  } else {
+    c.className = 'gallery-list';
+    c.innerHTML = allPhotos.map(p => {
+      const date = new Date(p.mtime * 1000).toLocaleString('ko', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+      const size = p.size > 1048576 ? (p.size/1048576).toFixed(1) + ' MB' : Math.round(p.size/1024) + ' KB';
+      const sel  = selectedPhotos.has(p.filename);
+      return `<div class="l-item${sel ? ' selected' : ''}" data-fn="${p.filename}" onclick="listClick(event,'${p.filename}')">
+        <input type="checkbox" class="l-check" ${sel ? 'checked' : ''}
+          onchange="toggleSel('${p.filename}',this.checked)" onclick="event.stopPropagation()">
+        <img class="l-thumb" src="/api/photos/${p.filename}/thumb" loading="lazy" onerror="this.src='/api/photos/${p.filename}'">
+        <div class="l-info">
+          <div class="l-name">${p.filename}</div>
+          <div class="l-meta">${date} · ${size}</div>
+        </div>
+        ${p.has_gps ? '<span class="l-gps">GPS</span>' : ''}
+      </div>`;
+    }).join('');
+  }
+}
+
+function gridClick(e, fn) {
+  if (selectedPhotos.size > 0) {
+    const cb = e.currentTarget.querySelector('.g-check');
+    cb.checked = !cb.checked;
+    toggleSel(fn, cb.checked);
+  } else {
+    const photo = allPhotos.find(p => p.filename === fn);
+    if (photo) openModal(photo);
+  }
+}
+
+function listClick(e, fn) {
+  const photo = allPhotos.find(p => p.filename === fn);
+  if (photo) openModal(photo);
+}
+
+function toggleSel(fn, checked) {
+  if (checked) selectedPhotos.add(fn);
+  else selectedPhotos.delete(fn);
+  document.querySelectorAll(`[data-fn="${fn}"]`).forEach(el => {
+    el.classList.toggle('selected', checked);
+    const cb = el.querySelector('input[type=checkbox]');
+    if (cb) cb.checked = checked;
+  });
+  updateSelBar();
+}
+
+function updateSelBar() {
+  const n   = selectedPhotos.size;
+  const bar = document.getElementById('sel-bar');
+  bar.classList.toggle('show', n > 0);
+  if (n > 0) {
+    document.getElementById('sel-count').textContent = n + '개 선택';
+    document.getElementById('sel-del-btn').textContent = `삭제 (${n})`;
+  }
+}
+
+function selectAll()    { allPhotos.forEach(p => selectedPhotos.add(p.filename)); renderGallery(); updateSelBar(); }
+function clearSelection() { selectedPhotos.clear(); renderGallery(); updateSelBar(); }
+
+async function downloadSelected() {
+  const list = [...selectedPhotos];
+  if (!list.length) return;
+  const btn = document.getElementById('sel-dl-btn');
+  btn.disabled = true;
+  btn.textContent = '준비 중...';
+  try {
+    const res = await fetch('/api/photos/download', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({filenames: list}),
     });
-    if (name === 'gallery') loadGallery();
+    if (!res.ok) throw new Error('server error');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `starcam_${list.length}장.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`✓ ${list.length}장 + 메타데이터 ZIP 다운로드`);
+  } catch (_) {
+    showToast('다운로드 실패', 4000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⬇ ZIP';
   }
+}
 
-  function handleStreamErr() {
-    setTimeout(() => { document.getElementById('preview').src = '/stream?' + Date.now(); }, 3000);
+async function deleteSelected() {
+  const n = selectedPhotos.size;
+  if (!n) return;
+  if (!confirm(`선택한 ${n}개 사진을 삭제하시겠습니까?`)) return;
+  const list = [...selectedPhotos];
+  let ok = 0;
+  for (const fn of list) {
+    try { await fetch(`/api/photos/${fn}/delete`, {method:'POST'}); ok++; } catch (_) {}
   }
+  selectedPhotos.clear();
+  updateSelBar();
+  showToast(`${ok}개 삭제됨`);
+  loadGallery();
+}
 
-  /* ── Status ── */
-  async function fetchStatus() {
-    try {
-      const s = await fetch('/api/status').then(r => r.json());
-      setChip('chip-cam', s.camera_connected ? 'ok' : 'err', s.camera_connected ? '카메라 연결됨' : '카메라 없음');
-      let gCls = '', gTxt = 'GPS 없음';
-      if (s.gps_fix) {
-        gCls = 'gps-fix';
-        gTxt = `GPS ${s.latitude?.toFixed(4)}, ${s.longitude?.toFixed(4)}` + (s.satellites ? ` (${s.satellites}개)` : '');
-      } else if (s.gps_connected) { gCls = 'gps-conn'; gTxt = 'GPS 탐색중'; }
-      const gc = document.getElementById('chip-gps');
-      gc.className = 'chip ' + gCls;
-      document.getElementById('lbl-gps').textContent = gTxt;
-      const t = s.cpu_temp;
-      setChip('chip-temp', t > 70 ? 'err' : t > 60 ? 'warn' : 'ok', t != null ? t.toFixed(1) + '°C' : '--°C');
-      setChip('chip-disk', s.disk_percent > 90 ? 'err' : s.disk_percent > 75 ? 'warn' : 'ok', (s.disk_free || '--') + ' 여유');
-      document.getElementById('ph-count').textContent = `사진 ${s.photo_count || 0}장`;
-    } catch (_) {}
+/* ═══════════════════════════════════════════════════════════
+   Photo Modal
+═══════════════════════════════════════════════════════════ */
+let cur = null;
+
+function openModal(photo) {
+  cur = photo;
+  document.getElementById('modal-fname').textContent = photo.filename;
+  document.getElementById('modal-img').src = '/api/photos/' + photo.filename;
+  const meta = photo.metadata || {}, cam = meta.camera || {}, gps = meta.gps;
+  const metaDiv = document.getElementById('modal-meta');
+  const rows = [];
+  if (meta.captured_at) rows.push(['촬영일시', meta.captured_at.replace('T',' ')]);
+  if (cam.shutter_ms != null) {
+    const ms = cam.shutter_ms;
+    rows.push(['노출', ms >= 1000 ? (ms/1000).toFixed(ms%1000===0?0:1)+'s' : ms+'ms']);
   }
-
-  function setChip(id, cls, txt) {
-    const el = document.getElementById(id);
-    el.className = 'chip ' + cls;
-    el.querySelector('span:last-child').textContent = txt;
+  if (cam.gain != null)        rows.push(['게인', `${cam.gain} (ISO${cam.iso_equiv || gainToIso(cam.gain)})`]);
+  if (cam.awb)                 rows.push(['WB', cam.awb]);
+  if (cam.saturation != null)  rows.push(['채도', cam.saturation]);
+  if (cam.sharpness  != null)  rows.push(['선명도', cam.sharpness]);
+  if (cam.contrast   != null)  rows.push(['대비', cam.contrast]);
+  if (cam.total > 1)           rows.push(['연속', `${cam.sequence}/${cam.total} (간격 ${cam.interval_s}s)`]);
+  if (gps && gps.fix) {
+    rows.push(['위도', gps.latitude?.toFixed(6)]);
+    rows.push(['경도', gps.longitude?.toFixed(6)]);
+    if (gps.altitude  != null) rows.push(['고도', gps.altitude.toFixed(1) + 'm']);
+    if (gps.satellites)        rows.push(['위성', gps.satellites + '개']);
+    if (gps.hdop != null)      rows.push(['HDOP', gps.hdop]);
+    if (gps.timestamp)         rows.push(['GPS시각', gps.timestamp]);
   }
+  if (rows.length) {
+    metaDiv.innerHTML = rows.map(([k,v]) => `<div class="meta-row"><span class="meta-key">${k}</span><span class="meta-val">${v}</span></div>`).join('');
+    metaDiv.classList.add('show');
+  } else metaDiv.classList.remove('show');
+  document.getElementById('modal').classList.add('open');
+}
 
-  /* ── Capture ── */
-  let busy = false;
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  document.getElementById('modal-img').src = '';
+  cur = null;
+}
+function downloadPhoto() {
+  if (!cur) return;
+  const a = document.createElement('a'); a.href = '/api/photos/' + cur.filename; a.download = cur.filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+async function deletePhoto() {
+  if (!cur || !confirm(cur.filename + '\n\n삭제하시겠습니까?')) return;
+  try {
+    await fetch('/api/photos/' + cur.filename + '/delete', {method:'POST'});
+    closeModal();
+    showToast('삭제됨');
+    allPhotos = allPhotos.filter(p => p.filename !== cur.filename);
+    renderGallery();
+  } catch (_) { showToast('삭제 실패'); }
+}
 
-  function getParams() {
-    return {
-      shutter:    Math.max(1,   +document.getElementById('in-shutter').value  || 5000),
-      gain:                     +document.getElementById('in-gain').value      || 8,
-      awb:                       document.getElementById('s-awb').value,
-      count:      Math.max(1,   +document.getElementById('in-count').value    || 1),
-      interval:   Math.max(1,   +document.getElementById('in-interval').value || 3),
-      saturation:               +document.getElementById('in-sat').value       || 1,
-      sharpness:                +document.getElementById('in-sharp').value     || 1.5,
-      contrast:                 +document.getElementById('in-con').value       || 1,
-      quality:    Math.round(  +document.getElementById('in-qual').value)      || 95,
-    };
+/* ═══════════════════════════════════════════════════════════
+   GPS Detail Panel
+═══════════════════════════════════════════════════════════ */
+const FIX_QUALITY = {0:'No fix',1:'GPS fix',2:'DGPS fix',3:'PPS fix',4:'RTK',5:'Float RTK'};
+let selectedBaud = 9600;
+
+function setVal(id, val, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = val == null ? '—' : val;
+  if (cls !== undefined) el.className = 'gps-val' + (cls ? ' ' + cls : '');
+}
+
+async function loadGpsDetail() {
+  try {
+    const d = await fetch('/api/gps').then(r => r.json());
+    let statusTxt, statusCls;
+    if (d.fix)            { statusTxt = 'Fix 획득'; statusCls = 'ok'; }
+    else if (d.connected) { statusTxt = '연결됨 (탐색중)'; statusCls = 'warn'; }
+    else                  { statusTxt = '연결 안됨'; statusCls = 'err'; }
+    setVal('gd-status',  statusTxt, statusCls);
+    setVal('gd-port',    d.port || '탐색중...', d.port ? '' : 'warn');
+    setVal('gd-baud',    d.baud ? d.baud + ' bps' : '—');
+    setVal('gd-quality', d.fix_quality != null ? `${d.fix_quality} (${FIX_QUALITY[d.fix_quality] || '?'})` : '—');
+    setVal('gd-sats',    d.satellites != null ? d.satellites + '개' : '—',
+           d.satellites >= 4 ? 'ok' : d.satellites > 0 ? 'warn' : '');
+    setVal('gd-hdop',    d.hdop != null ? d.hdop.toFixed(1) + (d.hdop <= 2 ? ' ★우수' : d.hdop <= 5 ? ' 양호' : ' 불량') : '—',
+           d.hdop != null ? (d.hdop <= 2 ? 'ok' : d.hdop <= 5 ? 'warn' : 'err') : '');
+    setVal('gd-lat',     d.latitude  != null ? d.latitude.toFixed(7) + '°' : '—');
+    setVal('gd-lon',     d.longitude != null ? d.longitude.toFixed(7) + '°' : '—');
+    setVal('gd-alt',     d.altitude  != null ? d.altitude.toFixed(1) + ' m' : '—');
+    setVal('gd-speed',   d.speed_kmh != null ? d.speed_kmh.toFixed(1) + ' km/h' : '—');
+    setVal('gd-course',  d.course    != null ? d.course.toFixed(1) + '°' : '—');
+    setVal('gd-time',    d.utc_time  || '—');
+    setVal('gd-date',    d.utc_date  || '—');
+    document.getElementById('gd-nmea').textContent = d.last_sentence || '—';
+    if (d.candidate_ports) {
+      document.getElementById('gd-ports').innerHTML =
+        d.candidate_ports.map(p => `<div style="color:${p===d.port?'var(--ok)':'var(--dim)'}">${p===d.port?'✓ ':'  '}${p}</div>`).join('');
+    }
+    if (d.baud) selectedBaud = d.baud;
+    renderBaudBtns();
+  } catch (_) { setVal('gd-status', '서버 오류', 'err'); }
+}
+
+function renderBaudBtns() {
+  const bauds = [4800, 9600, 19200, 38400, 57600, 115200];
+  document.getElementById('baud-btns').innerHTML = bauds.map(b =>
+    `<button class="baud-btn${b===selectedBaud?' active':''}" onclick="selectedBaud=${b};renderBaudBtns()">${b}</button>`
+  ).join('');
+}
+
+
+/* ── 프리뷰 노출 ──────────────────────────────────────────── */
+function applyPreviewExp(ms) {
+  clearTimeout(applyPreviewExp._t);
+  applyPreviewExp._t = setTimeout(() => {
+    fetch('/api/camera/preview', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({max_ms: +ms})
+    });
+  }, 300);
+}
+
+/* ── FPN 보정 토글 ────────────────────────────────────────── */
+function applyFpnBtn(enabled) {
+  const btn = document.getElementById('fpn-toggle-btn');
+  if (!btn) return;
+  btn.textContent = enabled ? 'ON' : 'OFF';
+  btn.classList.toggle('on', enabled);
+}
+async function toggleFpn() {
+  const btn = document.getElementById('fpn-toggle-btn');
+  const current = btn && btn.textContent === 'ON';
+  try {
+    const res = await fetch('/api/camera/fpn', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({enabled: !current})
+    }).then(r => r.json());
+    applyFpnBtn(res.enabled);
+  } catch(e) { console.error('FPN toggle failed', e); }
+}
+
+/* ── 박명 & 위성 관측 시간 ──────────────────────────────── */
+async function loadSkyEvents() {
+  let d;
+  try { d = await fetch('/api/sky').then(r => r.json()); }
+  catch(e) {
+    document.getElementById('sky-body').innerHTML =
+      '<span style="color:var(--dim);font-size:12px">계산 오류</span>';
+    return;
   }
-
-  function showBusy(msg) {
-    document.getElementById('overlay-msg').textContent = msg;
-    document.getElementById('p-overlay').classList.add('show');
-    document.getElementById('capture-btn').disabled = true;
-    document.getElementById('cal-btn').disabled = true;
-    busy = true;
+  const ev = d.today, tm = d.tomorrow;
+  const knames = {
+    sunrise:      '🌅 일몰 / 일출',
+    civil:        '🌆 시민 박명  (-6°)',
+    nautical:     '🌃 항해 박명 (-12°)',
+    astronomical: '🌌 천문 박명 (-18°)'
+  };
+  function halfTable(label, rows) {
+    let s = `<div class="sky-half-title">${label}</div><table class="sky-table">`;
+    for (const [k, v] of rows)
+      s += `<tr><td>${k}</td><td>${v || '—'}</td></tr>`;
+    return s + '</table>';
   }
-  function hideBusy() {
-    document.getElementById('p-overlay').classList.remove('show');
-    document.getElementById('progress').classList.remove('show');
-    document.getElementById('pfill').style.width = '0';
-    document.getElementById('capture-btn').disabled = false;
-    document.getElementById('cal-btn').disabled = false;
-    busy = false;
+  const todayDate = ev.date ? ev.date.slice(5).replace('-','/') : '오늘';
+  const tmDate    = tm.date ? tm.date.slice(5).replace('-','/')  : '내일';
+  let html = halfTable(`오늘 저녁 (${todayDate})`, [
+    [knames.sunrise,       ev.sunrise_end],
+    [knames.civil,         ev.civil_end],
+    [knames.nautical,      ev.nautical_end],
+    [knames.astronomical,  ev.astronomical_end],
+  ]);
+  html += halfTable(`내일 새벽 (${tmDate})`, [
+    [knames.astronomical,  tm.astronomical_start],
+    [knames.nautical,      tm.nautical_start],
+    [knames.civil,         tm.civil_start],
+    [knames.sunrise,       tm.sunrise_start],
+  ]);
+  const allWins = [
+    ...(ev.leo_windows || []),
+    ...(tm.leo_windows || []).filter(w => w.period === '새벽')
+  ];
+  if (allWins.length) {
+    html += '<div class="leo-box"><div class="leo-title">🛰 LEO 위성 관측 가능 (약 500km)</div>';
+    for (const w of allWins) {
+      const [sh, sm] = w.start.split(':').map(Number);
+      const [eh, em] = w.end.split(':').map(Number);
+      let dur = (eh*60+em) - (sh*60+sm);
+      if (dur < 0) dur += 1440;
+      html += `<div class="leo-row"><span>${w.period}</span>` +
+              `<span>${w.start} ~ ${w.end} <span style="color:var(--dim)">(${dur}분)</span></span></div>`;
+    }
+    html += '<div class="leo-note">하늘은 어둡고 위성은 태양빛 반사 중인 시간대.<br>' +
+            '통과 간격 약 95분 · 1회 통과 약 8~12분</div></div>';
   }
-
-  async function doCapture() {
-    if (busy) return;
-    const p = getParams();
-    const shutterSec = p.shutter / 1000;
-    const total = p.count * shutterSec + (p.count - 1) * p.interval;
-
-    showBusy(`1 / ${p.count}`);
-    document.getElementById('progress').classList.add('show');
-    document.getElementById('pfill').style.width = '5%';
-
-    const t0 = Date.now();
-    const tick = setInterval(() => {
-      const el = (Date.now() - t0) / 1000;
-      document.getElementById('pfill').style.width = Math.min(90, el / total * 100) + '%';
-      document.getElementById('overlay-msg').textContent =
-        Math.min(p.count, Math.floor(el / (shutterSec + p.interval)) + 1) + ' / ' + p.count;
-    }, 500);
-
-    try {
-      const res  = await fetch('/api/capture', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(p) });
-      clearInterval(tick);
-      document.getElementById('pfill').style.width = '100%';
-      const d = await res.json();
-      if (d.saved && d.saved.length)
-        showToast(`✓ ${d.saved.length}장 저장됨` + (d.gps_saved ? ' 📍' : ''));
-      else
-        showToast('촬영 실패: ' + (d.error || '알 수 없는 오류'), 5000);
-    } catch (_) { clearInterval(tick); showToast('서버 연결 오류'); }
-    finally { setTimeout(hideBusy, 800); }
+  document.getElementById('sky-body').innerHTML = html;
+  // capture panel sky-strip
+  const strip = document.getElementById('sky-strip');
+  if (strip) {
+    const wins = [
+      ...(ev.leo_windows || []),
+      ...(tm.leo_windows||[]).filter(w=>w.period==='새벽')
+    ];
+    strip.innerHTML = wins.length
+      ? '<span class="sw-label">🛰 오늘 관측 창 &nbsp;</span>' +
+        wins.map(w=>`<span class="sw-label">${w.period} </span>`+
+                    `<span class="sw-time">${w.start}~${w.end}</span>`).join(' &nbsp;')
+      : '';
   }
+}
 
-  /* ── Auto-calibration ── */
-  async function doCalibrate() {
-    if (busy) return;
-    const shutterMs = Math.max(1000, +document.getElementById('in-shutter').value || 3000);
-    const testMs = Math.min(shutterMs, 3000);  // cap test at 3s for speed
 
-    showBusy(`게인 보정 중... (약 ${Math.round(testMs / 1000 * 4 + 4)}초)`);
+async function applyBaud() {
+  const btn = document.getElementById('baud-apply');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/gps/baud', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({baud: selectedBaud}),
+    }).then(r => r.json());
+    if (r.ok) { showToast(`Baud rate ${selectedBaud} bps 적용됨`); setTimeout(loadGpsDetail, 3500); }
+    else showToast('오류: ' + (r.error || '?'), 5000);
+  } catch (_) { showToast('서버 연결 오류'); }
+  finally { btn.disabled = false; }
+}
 
-    try {
-      const res = await fetch('/api/calibrate', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ shutter_ms: testMs }),
-      });
-      const d = await res.json();
-      hideBusy();
+/* ═══════════════════════════════════════════════════════════
+   Toast
+═══════════════════════════════════════════════════════════ */
+function showToast(msg, dur = 3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
 
-      if (d.error) { showToast('보정 실패: ' + d.error, 5000); return; }
 
-      // Render result table
-      const tbody = document.getElementById('cal-tbody');
-      const bestScore = Math.max(...d.results.map(r => r.score));
-      tbody.innerHTML = d.results.map(r => `
-        <tr class="${r.score === bestScore ? 'best' : ''}">
-          <td>${r.gain}</td>
-          <td>ISO${r.iso}</td>
-          <td>${r.avg}</td>
-          <td>${r.noise}</td>
-          <td>${r.stars.toLocaleString()}</td>
-          <td>${r.score}</td>
-        </tr>`).join('');
 
-      const rec = d.recommended;
-      document.getElementById('cal-rec').textContent =
-        `✓ 권장: 게인 ${rec.gain} (ISO${gainToIso(rec.gain)}) — ${rec.note}`;
-      document.getElementById('cal-result').classList.add('show');
+/* ── 자동탭 JS ──────────────────────────────────────────────── */
+let _trigOn = false, _perOn = false;
+let _trigHits = 0,   _perShots = 0;
 
-      // Apply recommended gain
-      document.getElementById('in-gain').value  = rec.gain;
-      document.getElementById('sl-gain').value  = rec.gain;
-      document.getElementById('unit-gain').textContent = '≈ISO' + gainToIso(rec.gain);
-      showToast(`게인 ${rec.gain} (ISO${gainToIso(rec.gain)}) 적용됨`);
-    } catch (_) {
-      hideBusy();
-      showToast('보정 중 오류 발생');
+async function toggleTrig() {
+  _trigOn = !_trigOn;
+  const params = {
+    shutter_ms: +document.getElementById('trig-shutter').value || 5000,
+    gain:       +document.getElementById('trig-gain').value    || 8,
+    awb: 'none',
+    count:    +document.getElementById('trig-count').value    || 5,
+    interval: +document.getElementById('trig-interval').value || 0.5,
+    saturation: 0, sharpness: 1.5, contrast: 1.0, quality: 95,
+  };
+  const threshold = +document.getElementById('trig-sens').value || 30;
+  try {
+    const d = await fetch('/api/camera/autotrigger', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({enabled:_trigOn, threshold, params}),
+    }).then(r=>r.json());
+    applyTrigStatus(d);
+    showToast(_trigOn ? '🛰 위성 감지 ON' : '자동 감지 OFF');
+  } catch(_) { _trigOn = !_trigOn; }
+}
+
+async function togglePeriodic() {
+  _perOn = !_perOn;
+  const interval_s = (+document.getElementById('per-interval-min').value || 10) * 60;
+  const params = {
+    shutter_ms: +document.getElementById('per-shutter').value || 5000,
+    gain:       +document.getElementById('per-gain').value    || 8,
+    awb: 'none',
+    count:      +document.getElementById('per-count').value   || 1,
+    interval: 1, saturation: 0, sharpness: 1.5, contrast: 1.0, quality: 95,
+  };
+  if (_perOn) {
+    localStorage.setItem(PER_SETTINGS_KEY, JSON.stringify({
+      interval_min: +document.getElementById('per-interval-min').value || 10,
+      shutter: +document.getElementById('per-shutter').value || 5000,
+      gain:    +document.getElementById('per-gain').value    || 8,
+      count:   +document.getElementById('per-count').value   || 1,
+    }));
+  }
+  try {
+    const d = await fetch('/api/camera/periodic', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({enabled:_perOn, interval_s, params}),
+    }).then(r=>r.json());
+    applyPerStatus(d);
+    showToast(_perOn ? `🕐 주기 촬영 ON (${document.getElementById('per-interval-min').value}분 간격)` : '주기 촬영 OFF');
+  } catch(_) { _perOn = !_perOn; }
+}
+
+function applyTrigStatus(d) {
+  _trigOn = d.enabled;
+  const btn = document.getElementById('trig-toggle-btn');
+  const st  = document.getElementById('trig-auto-status');
+  if (!btn) return;
+  btn.textContent = _trigOn ? 'ON' : 'OFF';
+  btn.classList.toggle('on', _trigOn);
+  const cnt = d.hit_count || 0;
+  st.textContent = _trigOn
+    ? (cnt > 0 ? `● 감시 중 — ${cnt}회 감지됨` : '● 감시 중')
+    : (cnt > 0 ? `● 대기 중 (총 ${cnt}회 감지)` : '● 대기 중');
+  st.classList.toggle('on', _trigOn);
+  if (cnt > _trigHits) {
+    _trigHits = cnt;
+    showToast(`🛰 위성 감지! 자동 촬영 (${cnt}회째)`, 5000);
+  } else { _trigHits = cnt; }
+  const badge = document.getElementById('trig-shoot-badge');
+  if (badge) badge.classList.toggle('show', !!(d.capturing));
+}
+
+
+
+function toggleBurstSect() {
+  document.getElementById('burst-sect-body').classList.toggle('open');
+  document.getElementById('burst-sect-arrow').classList.toggle('open');
+}
+
+function applyBurstStatus(d) {
+  const btn = document.getElementById('burst-toggle-btn');
+  const st  = document.getElementById('burst-status');
+  if (!btn) return;
+  if (d.running) {
+    btn.textContent = '■ 중지';
+    btn.classList.add('on');
+    const rem = d.remaining;
+    const h = Math.floor(rem / 3600), m = Math.floor((rem % 3600) / 60), s = rem % 60;
+    const remStr = h > 0 ? h + '시간 ' + m + '분' : m + '분 ' + s + '초';
+    st.textContent = '● 촬영 중 — ' + d.count + '장 | 남은 ' + remStr;
+    st.style.color = '#f93';
+  } else {
+    btn.textContent = '시작';
+    btn.classList.remove('on');
+    if (d.count > 0) {
+      st.textContent = '완료: ' + d.count + '장 촬영';
+      st.style.color = '#8f8';
+    } else {
+      st.textContent = '● 대기 중';
+      st.style.color = '';
     }
   }
+}
 
-  /* ── Gallery ── */
-  async function loadGallery() {
-    const grid = document.getElementById('gallery-grid');
-    grid.innerHTML = '<div class="empty">불러오는 중...</div>';
-    try {
-      const photos = await fetch('/api/photos').then(r => r.json());
-      if (!photos.length) { grid.innerHTML = '<div class="empty">사진 없음</div>'; return; }
-      grid.innerHTML = '';
-      photos.forEach(p => {
-        const d = document.createElement('div');
-        d.className = 'g-item';
-        const lbl = p.filename.replace('star_','').replace(/\.jpg$/,'').replace(/_(\d{3})$/,' #$1');
-        d.innerHTML =
-          `<img src="/api/photos/${p.filename}/thumb" loading="lazy" onerror="this.src='/api/photos/${p.filename}'">` +
-          (p.has_gps ? '<span class="gps-badge">GPS</span>' : '') +
-          `<div class="g-info">${lbl}</div>`;
-        d.onclick = () => openModal(p);
-        grid.appendChild(d);
-      });
-    } catch (_) { grid.innerHTML = '<div class="empty" style="color:var(--err)">불러오기 실패</div>'; }
-  }
-
-  /* ── Modal ── */
-  let cur = null;
-
-  function openModal(photo) {
-    cur = photo;
-    document.getElementById('modal-fname').textContent = photo.filename;
-    document.getElementById('modal-img').src = '/api/photos/' + photo.filename;
-    const meta = photo.metadata || {}, cam = meta.camera || {}, gps = meta.gps;
-    const metaDiv = document.getElementById('modal-meta');
-    const rows = [];
-    if (meta.captured_at) rows.push(['촬영일시', meta.captured_at.replace('T',' ')]);
-    if (cam.shutter_ms != null) {
-      const ms = cam.shutter_ms;
-      rows.push(['노출', ms >= 1000 ? (ms/1000).toFixed(ms%1000===0?0:1)+'s' : ms+'ms']);
+async function toggleBurst() {
+  const btn = document.getElementById('burst-toggle-btn');
+  const running = btn.textContent.includes('중지');
+  btn.disabled = true;
+  try {
+    if (running) {
+      const d = await fetch('/api/camera/burst', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'stop'})
+      }).then(r => r.json());
+      applyBurstStatus(d);
+    } else {
+      const params = {
+        shutter:    parseFloat(document.getElementById('b-shutter').value) || 450,
+        gain:       parseFloat(document.getElementById('b-gain').value) || 10.5,
+        awb:        document.getElementById('b-awb').value,
+        quality:    95,
+        saturation: 1.0,
+        sharpness:  1.5,
+        contrast:   1.0,
+      };
+      const duration_s = (parseInt(document.getElementById('b-duration').value) || 60) * 60;
+      const d = await fetch('/api/camera/burst', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'start', params, duration_s})
+      }).then(r => r.json());
+      applyBurstStatus(d);
     }
-    if (cam.gain != null) rows.push(['게인', `${cam.gain}  (ISO ${cam.iso_equiv || gainToIso(cam.gain)})`]);
-    if (cam.awb) rows.push(['WB', cam.awb]);
-    if (cam.saturation != null) rows.push(['채도', cam.saturation]);
-    if (cam.sharpness  != null) rows.push(['선명도', cam.sharpness]);
-    if (cam.contrast   != null) rows.push(['대비', cam.contrast]);
-    if (cam.total > 1) rows.push(['연속', `${cam.sequence}/${cam.total}  간격 ${cam.interval_s}s`]);
-    if (gps && gps.fix) {
-      rows.push(['위도', gps.latitude?.toFixed(6)]);
-      rows.push(['경도', gps.longitude?.toFixed(6)]);
-      if (gps.altitude  != null) rows.push(['고도', gps.altitude.toFixed(1) + 'm']);
-      if (gps.satellites)        rows.push(['위성', gps.satellites + '개']);
-      if (gps.timestamp)         rows.push(['GPS 시각', gps.timestamp]);
+  } finally { btn.disabled = false; }
+}
+
+function toggleAutoSect() {
+  document.getElementById('auto-sect-body').classList.toggle('open');
+  document.getElementById('auto-sect-arrow').classList.toggle('open');
+}
+
+function applyPerStatus(d) {
+  _perOn = d.enabled;
+  const btn  = document.getElementById('per-toggle-btn');
+  const st   = document.getElementById('per-auto-status');
+  const nxt  = document.getElementById('per-next');
+  if (!btn) return;
+  btn.textContent = _perOn ? 'ON' : 'OFF';
+  btn.classList.toggle('on', _perOn);
+  // 주기촬영 ON 상태 → 저장된 설정값 복원
+  if (d.enabled) {
+    const saved = (() => { try { return JSON.parse(localStorage.getItem(PER_SETTINGS_KEY) || 'null'); } catch(_) { return null; } })();
+    const setEl = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+    if (saved) {
+      setEl('per-interval-min', saved.interval_min);
+      setEl('per-shutter',      saved.shutter);
+      setEl('per-gain',         saved.gain);
+      setEl('per-count',        saved.count);
+    } else if (d.interval_s) {
+      setEl('per-interval-min', Math.round(d.interval_s / 60));
     }
-    if (rows.length) {
-      metaDiv.innerHTML = rows.map(([k,v]) => `<div class="meta-row"><span class="meta-key">${k}</span><span class="meta-val">${v}</span></div>`).join('');
-      metaDiv.classList.add('show');
-    } else metaDiv.classList.remove('show');
-    document.getElementById('modal').classList.add('open');
   }
+  const cnt = d.shot_count || 0;
+  st.textContent = _perOn
+    ? (cnt > 0 ? `● 촬영 중 — ${cnt}장 완료` : '● 대기 중')
+    : (cnt > 0 ? `● 대기 중 (총 ${cnt}장)` : '● 대기 중');
+  st.classList.toggle('on', _perOn);
+  if (nxt && _perOn && d.next_in_s != null) {
+    const m = Math.floor(d.next_in_s/60), s = d.next_in_s%60;
+    nxt.textContent = `다음 촬영까지: ${m}분 ${s}초`;
+  } else if (nxt) { nxt.textContent = ''; }
+  if ((d.shot_count||0) > _perShots) {
+    _perShots = d.shot_count;
+    showToast(`🕐 주기 촬영 완료 (${_perShots}장)`, 3000);
+  } else { _perShots = d.shot_count||0; }
+}
 
-  function closeModal() {
-    document.getElementById('modal').classList.remove('open');
-    document.getElementById('modal-img').src = '';
-    cur = null;
-  }
-  function downloadPhoto() {
-    if (!cur) return;
-    const a = document.createElement('a'); a.href = '/api/photos/' + cur.filename; a.download = cur.filename;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  }
-  async function deletePhoto() {
-    if (!cur || !confirm(cur.filename + '\n\n삭제하시겠습니까?')) return;
-    try { await fetch('/api/photos/' + cur.filename + '/delete', {method:'POST'}); closeModal(); showToast('삭제됨'); loadGallery(); }
-    catch (_) { showToast('삭제 실패'); }
-  }
+/* ── 감시 촬영 (Scout mode) ──────────────────────────────── */
+let _scoutOn = false, _scoutDetects = 0;
 
-  function showToast(msg, dur = 3000) {
-    const t = document.getElementById('toast');
-    t.textContent = msg; t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), dur);
-  }
+async function toggleScout() {
+  const wasActive = _scoutOn || (document.getElementById('scout-toggle-btn').classList.contains('on'));
+  _scoutOn = !wasActive;
+  const btn = document.getElementById('scout-toggle-btn');
+  btn.disabled = true;
+  const scoutParams = {
+    shutter_ms:  +document.getElementById('scout-shutter').value    || 200,
+    gain:        +document.getElementById('scout-gain').value        || 8,
+    pre_frames:  +document.getElementById('scout-pre-frames').value  || 8,
+    post_frames: +document.getElementById('scout-post-frames').value || 15,
+    awb: 'none', saturation: 0, sharpness: 1.5, contrast: 1.0, quality: 95,
+  };
+  try {
+    const action = _scoutOn ? 'start' : 'stop';
+    const d = await fetch('/api/camera/scout', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action, scout_params: scoutParams,
+        start_at_utc: document.getElementById('scout-start-at').value || null,
+        stop_at_utc:  document.getElementById('scout-stop-at').value  || null}),
+    }).then(r => r.json());
+    applyScoutStatus(d);
+    showToast(_scoutOn ? '🔭 감시 촬영 시작' : '감시 촬영 중지');
+  } catch(_) { _scoutOn = !_scoutOn; showToast('오류'); }
+  finally { btn.disabled = false; }
+}
 
-  fetchStatus();
-  setInterval(fetchStatus, 4000);
+function applyScoutStatus(d) {
+  _scoutOn = d.enabled;
+  const btn  = document.getElementById('scout-toggle-btn');
+  const st   = document.getElementById('scout-status');
+  const last = document.getElementById('scout-last');
+  const badge = document.getElementById('scout-detect-badge');
+  if (!btn) return;
+  const isScheduled = d.scheduled;
+  btn.textContent = (_scoutOn || isScheduled) ? 'ON' : 'OFF';
+  btn.classList.toggle('on', _scoutOn || isScheduled);
+  const frames  = d.frame_count  || 0;
+  const detects = d.detect_count || 0;
+  if (isScheduled) {
+    st.textContent = `● 예약됨 — ${d.start_at} 시작 대기 중`;
+  } else {
+    st.textContent = _scoutOn
+      ? (frames > 0 ? `● 감시 중 — ${frames}장 분석, ${detects}회 감지` : '● 감시 중')
+      : (detects > 0 ? `● 대기 중 (총 ${detects}회 감지)` : '● 대기 중');
+  }
+  st.classList.toggle('on', _scoutOn || isScheduled);
+  if (last && d.last_result) {
+    const r = d.last_result;
+    if (r.detected) {
+      last.textContent = `마지막: ✓ 궤적 (직선성 ${r.linearity}, ${r.trail_len_px}px)`;
+      last.style.color = 'var(--ok)';
+    } else {
+      last.textContent = `마지막: — ${r.reason || ''}`;
+      last.style.color = 'var(--dim)';
+    }
+  }
+  const stopInfo = document.getElementById('scout-stop-at-info');
+  if (stopInfo) {
+    const parts = [];
+    if (d.start_at && isScheduled) parts.push(`시작: ${d.start_at}`);
+    if (d.stop_at  && (_scoutOn || isScheduled)) parts.push(`종료: ${d.stop_at}`);
+    stopInfo.textContent = parts.join('  ');
+  }
+  if (badge) badge.classList.toggle('show', _scoutOn && detects > 0 && detects > _scoutDetects);
+  if (detects > _scoutDetects) {
+    _scoutDetects = detects;
+    showToast(`🔭 위성 궤적 감지! 연속 촬영 시작 (${detects}회째)`, 6000);
+    setTimeout(loadGallery, 8000);
+  } else { _scoutDetects = detects; }
+}
+
+/* ── Twilight auto-fill ───────────────────────────────── */
+function kstToUtc(kst) {
+  if (!kst) return '';
+  const [h, m] = kst.split(':').map(Number);
+  const uh = ((h - 9) + 24) % 24;
+  return String(uh).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
+async function fillTwilight(type) {
+  try {
+    const sky = await fetch('/api/sky').then(r => r.json());
+    let sKst, eKst, label;
+    if (type === 'evening') {
+      sKst  = sky.today.civil_end;
+      eKst  = sky.today.astronomical_end;
+      label = '저녁박명';
+    } else if (type === 'morning') {
+      sKst  = sky.tomorrow.astronomical_start;
+      eKst  = sky.tomorrow.civil_start;
+      label = '새벽박명';
+    } else {
+      sKst  = sky.today.astronomical_end;
+      eKst  = sky.tomorrow.astronomical_start;
+      label = '밤새 (천문야간)';
+    }
+    if (!sKst || !eKst) { showToast('박명 시간 계산 불가 (GPS 위치 없음?)'); return; }
+    document.getElementById('scout-start-at').value = kstToUtc(sKst);
+    document.getElementById('scout-stop-at').value  = kstToUtc(eKst);
+    showToast(`${label} — ${sKst}~${eKst} KST`);
+  } catch(e) { showToast('박명 계산 오류'); }
+}
+
+/* ── LED control ──────────────────────────────────────── */
+let _ledsOn = true;
+let _ledControllable = false;
+
+async function fetchLedStatus() {
+  try {
+    const d = await fetch('/api/system/leds').then(r => r.json());
+    _ledControllable = d.controllable;
+    _ledsOn = (d.act > 0 || d.pwr > 0);
+    applyLedChip();
+  } catch(_) {}
+}
+
+function applyLedChip() {
+  const chip = document.getElementById('chip-led');
+  const lbl  = document.getElementById('lbl-led');
+  if (!chip) return;
+  if (!_ledControllable) {
+    chip.style.display = 'none';
+    return;
+  }
+  chip.style.display = '';
+  chip.classList.toggle('off', !_ledsOn);
+  lbl.textContent = _ledsOn ? 'LED 켜짐' : 'LED 꺼짐';
+}
+
+async function toggleLeds() {
+  if (!_ledControllable) {
+    showToast('LED 제어 권한 없음 — ssh pi "sudo bash ~/starcam/setup-leds.sh" 실행 후 앱 재시작');
+    return;
+  }
+  const val = _ledsOn ? 0 : 1;
+  try {
+    const d = await fetch('/api/system/leds', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({act: val, pwr: val}),
+    }).then(r => r.json());
+    if (d.ok) {
+      _ledsOn = val === 1;
+      applyLedChip();
+      showToast(_ledsOn ? '💡 LED 켜짐' : '💡 LED 꺼짐');
+    } else {
+      showToast('LED 제어 실패: ' + (d.error || ''));
+    }
+  } catch(_) { showToast('LED 오류'); }
+}
+
+/* ── Preview info overlay (preview + shutter) ─────────── */
+(function(){
+  const u  = document.getElementById('unit-shutter');
+  const iv = document.getElementById('in-prev-exp');
+  const p  = document.getElementById('preview-info');
+  if (!u || !p) return;
+  const sync = () => {
+    const cap  = u.textContent.replace('= ', '');
+    const prev = iv ? fmtMs(+iv.value) : '';
+    p.textContent = prev ? '프리뷰 ' + prev + ' | 촬영 ' + cap : cap;
+  };
+  new MutationObserver(sync).observe(u, {childList:true,characterData:true,subtree:true});
+  if (iv) iv.addEventListener('input', sync);
+  sync();
+})();
+
+/* Init */
+renderBaudBtns();
+(function() {
+  const p1 = _getPresets()['1'];
+  if (p1) { _applyFields(p1); _activePreset = '1'; }
+  _refreshPresetBtns();
+})();
+fetchStatus();
+setInterval(fetchStatus, 4000);
+fetchLedStatus();
+loadSkyEvents();
+applyRatio();
 </script>
 </body>
 </html>
