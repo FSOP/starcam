@@ -1195,6 +1195,43 @@ class Camera:
         angles = list(self._ring_angle_hist)
         return (max(angles) - min(angles)) < 10.0
 
+    def _save_arch_frame(self, jpeg_bytes, captured_at, frame_num,
+                         shutter_ms, shutter_us, gain, awb,
+                         saturation, sharpness, contrast, quality,
+                         gps_data=None):
+        """Save every scout frame for full-session archive (verification).
+        Returns (jpg_path, json_path). JSON has triggered=False initially;
+        the detection worker updates it to True if this frame fires a ring event.
+        """
+        os.makedirs(PHOTOS_DIR, exist_ok=True)
+        ms = captured_at.microsecond // 1000
+        ts = captured_at.strftime('%Y%m%d_%H%M%S') + f'_{ms:03d}'
+        filename = f'star_{ts}_{frame_num:05d}_arch.jpg'
+        filepath = os.path.join(PHOTOS_DIR, filename)
+        with open(filepath, 'wb') as fh:
+            fh.write(jpeg_bytes)
+        utc_offset = datetime.now() - datetime.utcnow()
+        cat_utc = captured_at - utc_offset
+        metadata = {
+            'captured_at':     captured_at.isoformat(timespec='milliseconds'),
+            'captured_at_utc': cat_utc.strftime('%Y-%m-%dT%H:%M:%S.')
+                               + f'{cat_utc.microsecond // 1000:03d}Z',
+            'camera': {
+                'shutter_ms': shutter_ms, 'shutter_us': shutter_us,
+                'gain': gain, 'iso_equiv': gain_to_iso(gain),
+                'awb': awb, 'saturation': saturation,
+                'sharpness': sharpness, 'contrast': contrast, 'quality': quality,
+            },
+            'frame_num': frame_num,
+            'triggered': False,
+        }
+        if gps_data:
+            metadata['gps'] = gps_data
+        json_path = filepath.replace('.jpg', '.json')
+        with open(json_path, 'w') as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+        return filepath, json_path
+
     def _save_ring_frame(self, jpeg_bytes, captured_at, event_tag, seq,
                          shutter_ms, shutter_us, gain, awb,
                          saturation, sharpness, contrast, quality,
@@ -1248,17 +1285,18 @@ class Camera:
         saturation = float(self._scout_params.get('saturation', 0.0))
         sharpness  = float(self._scout_params.get('sharpness', 1.5))
         contrast   = float(self._scout_params.get('contrast', 1.0))
-        pre_n      = int(self._scout_params.get('pre_frames',  self._RING_PRE))
-        post_n     = int(self._scout_params.get('post_frames', self._RING_POST))
+        pre_n   = int(self._scout_params.get('pre_frames',  self._RING_PRE))
+        post_n  = int(self._scout_params.get('post_frames', self._RING_POST))
+        archive = bool(self._scout_params.get('archive', False))
 
         if _HAS_PICAMERA2:
             self._scout_ring_picamera2(shutter_ms, shutter_us, gain, awb,
                                        saturation, sharpness, contrast, quality,
-                                       pre_n, post_n)
+                                       pre_n, post_n, archive=archive)
         else:
             self._scout_ring_subprocess(shutter_ms, shutter_us, gain, awb,
                                         saturation, sharpness, contrast, quality,
-                                        pre_n, post_n)
+                                        pre_n, post_n, archive=archive)
 
     def _make_scout_worker(self, shutter_ms, shutter_us, gain, awb,
                             saturation, sharpness, contrast, quality,
@@ -1270,7 +1308,7 @@ class Camera:
             det_q = post_ctx['_det_q']
             while not stop_evt.is_set():
                 try:
-                    captured_at, raw, ring_snap = det_q.get(timeout=0.5)
+                    captured_at, raw, ring_snap, arch_json_path = det_q.get(timeout=0.5)
                 except queue.Empty:
                     continue
 
@@ -1294,6 +1332,17 @@ class Camera:
 
                         gps_data = (self._scout_gps_callback()
                                     if self._scout_gps_callback else None)
+
+                        # Mark arch frame as triggered
+                        if arch_json_path:
+                            try:
+                                with open(arch_json_path) as f:
+                                    d = json.load(f)
+                                d['triggered'] = True
+                                with open(arch_json_path, 'w') as f:
+                                    json.dump(d, f, indent=2, ensure_ascii=False)
+                            except Exception:
+                                pass
 
                         # Save pre-trigger frames (ring snapshot)
                         for i, (ts, data) in enumerate(ring_snap):
@@ -1324,7 +1373,7 @@ class Camera:
 
     def _scout_ring_picamera2(self, shutter_ms, shutter_us, gain, awb,
                                saturation, sharpness, contrast, quality,
-                               pre_n, post_n):
+                               pre_n, post_n, archive=False):
         with self._state_lock:
             cam      = self._cam
             prev_cfg = self._preview_config
@@ -1393,6 +1442,18 @@ class Camera:
                     pr        = post_ctx['remaining']
                     event_tag = post_ctx['event_tag']
 
+                gps_data = (self._scout_gps_callback()
+                            if self._scout_gps_callback else None)
+
+                # Archive: save every frame regardless of trigger state
+                arch_json_path = None
+                if archive:
+                    _, arch_json_path = self._save_arch_frame(
+                        raw, captured_at, self._scout_frame_count,
+                        shutter_ms, shutter_us, gain, awb,
+                        saturation, sharpness, contrast, quality,
+                        gps_data=gps_data)
+
                 if pr > 0:
                     # Post-trigger: save this frame directly in capture thread
                     with post_lock:
@@ -1401,8 +1462,6 @@ class Camera:
                         post_ctx['remaining'] -= 1
                         remaining_after = post_ctx['remaining']
 
-                    gps_data = (self._scout_gps_callback()
-                                if self._scout_gps_callback else None)
                     self._save_ring_frame(raw, captured_at, event_tag, seq,
                                          shutter_ms, shutter_us, gain, awb,
                                          saturation, sharpness, contrast, quality,
@@ -1419,7 +1478,7 @@ class Camera:
                         ring.append((captured_at, raw))
                         ring_snap = list(ring)
                     try:
-                        det_q.put_nowait((captured_at, raw, ring_snap))
+                        det_q.put_nowait((captured_at, raw, ring_snap, arch_json_path))
                     except queue.Full:
                         pass  # worker still busy; skip detection for this frame
         finally:

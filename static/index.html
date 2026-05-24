@@ -650,17 +650,26 @@
             <div class="scout-time-row">
               <div class="scout-time-item">
                 <label>UTC 시작</label>
-                <input type="time" id="scout-start-at" value="" title="비워두면 즉시 시작">
+                <input type="time" id="scout-start-at" value="" title="비워두면 즉시 시작" onchange="updateArchiveEst()">
               </div>
               <div class="scout-time-item">
                 <label>UTC 종료</label>
-                <input type="time" id="scout-stop-at" value="" title="비워두면 수동 종료">
+                <input type="time" id="scout-stop-at" value="" title="비워두면 수동 종료" onchange="updateArchiveEst()">
               </div>
               <button class="twilight-btn" onclick="fillTwilight('evening')" title="저녁박명: 시민황혼~천문황혼 (위성 가시 최적)">저녁</button>
               <button class="twilight-btn" onclick="fillTwilight('night')"   title="천문 야간: 완전 암흑 전체">밤새</button>
               <button class="twilight-btn" onclick="fillTwilight('morning')" title="새벽박명: 천문새벽~시민새벽 (위성 가시 최적)">새벽</button>
               <span class="scout-stop-at-info" id="scout-stop-at-info"></span>
             </div>
+            <div style="font-size:10px;color:var(--dim);margin:10px 0 4px;letter-spacing:.5px">전체 기록 (검증용)</div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+                <input type="checkbox" id="scout-archive" onchange="updateArchiveEst()">
+                모든 프레임 아카이브 저장
+              </label>
+              <span id="archive-est" style="font-size:10px;color:var(--warn)"></span>
+            </div>
+            <div class="auto-hint">아카이브: 탐지 여부와 무관하게 전 프레임 저장. 탐지 트리거된 프레임은 JSON에 <code>triggered:true</code> 표시. 검증 후 삭제 권장.</div>
             <div class="auto-hint">링 버퍼: 항상 촬영 중 → 탐지 시 이전 N장 + 이후 N장을 한번에 저장. 같은 각도 반복(구름·은하수) 자동 억제.</div>
           </div>
 
@@ -2070,16 +2079,37 @@ function applyPerStatus(d) {
 /* ── 감시 촬영 (Scout mode) ──────────────────────────────── */
 let _scoutOn = false, _scoutDetects = 0;
 
+function updateArchiveEst() {
+  const el = document.getElementById('archive-est');
+  if (!document.getElementById('scout-archive').checked) { el.textContent = ''; return; }
+  const shutter = +document.getElementById('scout-shutter').value || 500;
+  const startV  = document.getElementById('scout-start-at').value;
+  const stopV   = document.getElementById('scout-stop-at').value;
+  let durationMin = 60; // default 1h
+  if (startV && stopV) {
+    const [sh, sm] = startV.split(':').map(Number);
+    const [eh, em] = stopV.split(':').map(Number);
+    let diff = (eh * 60 + em) - (sh * 60 + sm);
+    if (diff <= 0) diff += 24 * 60;
+    durationMin = diff;
+  }
+  const fps = 1000 / shutter;                      // frames per second
+  const frames = Math.round(fps * durationMin * 60);
+  const gbEst  = (frames * 400 / 1024 / 1024).toFixed(1); // ~400KB/frame
+  el.textContent = `약 ${frames.toLocaleString()}장 · ~${gbEst} GB`;
+}
+
 async function toggleScout() {
   const wasActive = _scoutOn || (document.getElementById('scout-toggle-btn').classList.contains('on'));
   _scoutOn = !wasActive;
   const btn = document.getElementById('scout-toggle-btn');
   btn.disabled = true;
   const scoutParams = {
-    shutter_ms:  +document.getElementById('scout-shutter').value    || 1000,
+    shutter_ms:  +document.getElementById('scout-shutter').value    || 500,
     gain:        +document.getElementById('scout-gain').value        || 8,
     pre_frames:  +document.getElementById('scout-pre-frames').value  || 8,
     post_frames: +document.getElementById('scout-post-frames').value || 15,
+    archive:     document.getElementById('scout-archive').checked,
     awb: 'none', saturation: 0, sharpness: 1.5, contrast: 1.0, quality: 95,
   };
   try {
@@ -2092,7 +2122,8 @@ async function toggleScout() {
     }).then(r => r.json());
     applyScoutStatus(d);
     if (_scoutOn) {
-      showToast(`🔭 감시 시작 — ${scoutParams.shutter_ms}ms · gain ${scoutParams.gain} · pre ${scoutParams.pre_frames} / post ${scoutParams.post_frames}`, 4000);
+      const archTag = scoutParams.archive ? ' · 📼아카이브' : '';
+      showToast(`🔭 감시 시작 — ${scoutParams.shutter_ms}ms · gain ${scoutParams.gain} · pre ${scoutParams.pre_frames} / post ${scoutParams.post_frames}${archTag}`, 4000);
     } else {
       showToast('감시 촬영 중지');
     }
