@@ -167,6 +167,10 @@ class GPSReader:
         with self._lock:
             if not self._fix:
                 return None
+            if self._utc_date and self._utc_time:
+                utc_str = f'{self._utc_date}T{self._utc_time}Z'
+            else:
+                utc_str = self._utc_time
             return {
                 'fix':        True,
                 'latitude':   self._lat,
@@ -177,7 +181,7 @@ class GPSReader:
                 'track':      self._track,
                 'magtrack':   self._magtrack,
                 'magvar':     self._magvar,
-                'timestamp':  self._utc_time,
+                'utc':        utc_str,
             }
 
     def detail(self):

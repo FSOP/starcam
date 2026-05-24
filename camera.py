@@ -566,8 +566,12 @@ class Camera:
     def _save_sidecar(self, filepath, captured_at, shutter_ms, shutter_us,
                       gain, awb, saturation, sharpness, contrast, quality,
                       seq, total, interval, gps_data):
+        utc_offset = datetime.now() - datetime.utcnow()
+        captured_at_utc = captured_at - utc_offset
         metadata = {
-            'captured_at': captured_at.isoformat(timespec='milliseconds'),
+            'captured_at':     captured_at.isoformat(timespec='milliseconds'),
+            'captured_at_utc': captured_at_utc.strftime('%Y-%m-%dT%H:%M:%S.') +
+                               f'{captured_at_utc.microsecond // 1000:03d}Z',
             'camera': {
                 'shutter_ms': shutter_ms, 'shutter_us': shutter_us,
                 'gain': gain, 'iso_equiv': gain_to_iso(gain),
@@ -578,15 +582,7 @@ class Camera:
             },
         }
         if gps_data:
-            gps_section = dict(gps_data)
-            try:
-                ms = captured_at.microsecond // 1000
-                ts = gps_section.get('timestamp', '')
-                if ts and len(ts) >= 19:
-                    gps_section['timestamp'] = ts[:19] + f'.{ms:03d}Z'
-            except Exception:
-                pass
-            metadata['gps'] = gps_section
+            metadata['gps'] = dict(gps_data)
         with open(filepath.replace('.jpg', '.json'), 'w') as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
         return bool(gps_data)
@@ -1218,8 +1214,12 @@ class Camera:
         filepath = os.path.join(PHOTOS_DIR, filename)
         with open(filepath, 'wb') as fh:
             fh.write(jpeg_bytes)
+        utc_offset = datetime.now() - datetime.utcnow()
+        captured_at_utc = captured_at - utc_offset
         metadata = {
-            'captured_at': captured_at.isoformat(timespec='milliseconds'),
+            'captured_at':     captured_at.isoformat(timespec='milliseconds'),
+            'captured_at_utc': captured_at_utc.strftime('%Y-%m-%dT%H:%M:%S.') +
+                               f'{captured_at_utc.microsecond // 1000:03d}Z',
             'camera': {
                 'shutter_ms': shutter_ms, 'shutter_us': shutter_us,
                 'gain': gain, 'iso_equiv': gain_to_iso(gain),
