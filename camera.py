@@ -1202,14 +1202,19 @@ class Camera:
     def _save_ring_frame(self, jpeg_bytes, captured_at, event_tag, seq,
                          shutter_ms, shutter_us, gain, awb,
                          saturation, sharpness, contrast, quality,
-                         gps_data=None, trail=None):
-        """Write one ring-buffer frame to disk with FPN correction + sidecar."""
+                         gps_data=None, trail=None, frame_type='pre'):
+        """Write one ring-buffer frame to disk with FPN correction + sidecar.
+
+        frame_type : 'pre'  — before trigger (no satellite expected)
+                     'hit'  — frame that triggered detection (satellite present)
+                     'post' — after trigger (satellite exiting or gone)
+        """
         os.makedirs(PHOTOS_DIR, exist_ok=True)
         if self._fpn_enabled and _HAS_IMGLIB:
             jpeg_bytes = self._fpn_correct_jpeg(jpeg_bytes, quality)
         ms  = captured_at.microsecond // 1000
         ts  = captured_at.strftime('%Y%m%d_%H%M%S') + f'_{ms:03d}'
-        filename = f'star_{ts}_{seq:04d}_ring.jpg'
+        filename = f'star_{ts}_{seq:04d}_ring_{frame_type}.jpg'
         filepath = os.path.join(PHOTOS_DIR, filename)
         with open(filepath, 'wb') as fh:
             fh.write(jpeg_bytes)
@@ -1223,6 +1228,7 @@ class Camera:
             },
             'ring_event': event_tag,
             'ring_seq':   seq,
+            'ring_type':  frame_type,
         }
         if trail:
             metadata['detection'] = trail
@@ -1294,13 +1300,14 @@ class Camera:
                             with post_lock:
                                 post_ctx['seq'] += 1
                                 seq = post_ctx['seq']
-                            is_trigger = (i == len(ring_snap) - 1)
+                            is_hit = (i == len(ring_snap) - 1)
                             self._save_ring_frame(
                                 data, ts, event_tag, seq,
                                 shutter_ms, shutter_us, gain, awb,
                                 saturation, sharpness, contrast, quality,
                                 gps_data=gps_data,
-                                trail=trail if is_trigger else None)
+                                trail=trail if is_hit else None,
+                                frame_type='hit' if is_hit else 'pre')
 
                         print(f'[scout] 이벤트 탐지 {event_tag}  '
                               f'lin={trail.get("linearity")}  '
@@ -1399,7 +1406,7 @@ class Camera:
                     self._save_ring_frame(raw, captured_at, event_tag, seq,
                                          shutter_ms, shutter_us, gain, awb,
                                          saturation, sharpness, contrast, quality,
-                                         gps_data=gps_data)
+                                         gps_data=gps_data, frame_type='post')
                     if remaining_after == 0:
                         total = pre_n + 1 + post_n
                         print(f'[scout] 이벤트 {event_tag} 저장 완료 ({total}장)',
@@ -1497,7 +1504,7 @@ class Camera:
                     self._save_ring_frame(raw, captured_at, event_tag, seq,
                                          shutter_ms, shutter_us, gain, awb,
                                          saturation, sharpness, contrast, quality,
-                                         gps_data=gps_data)
+                                         gps_data=gps_data, frame_type='post')
                     if remaining_after == 0:
                         with ring_lock:
                             ring.clear()
