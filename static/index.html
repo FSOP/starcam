@@ -661,15 +661,20 @@
               <button class="twilight-btn" onclick="fillTwilight('morning')" title="새벽박명: 천문새벽~시민새벽 (위성 가시 최적)">새벽</button>
               <span class="scout-stop-at-info" id="scout-stop-at-info"></span>
             </div>
-            <div style="font-size:10px;color:var(--dim);margin:10px 0 4px;letter-spacing:.5px">전체 기록 (검증용)</div>
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <div style="font-size:10px;color:var(--dim);margin:10px 0 4px;letter-spacing:.5px">옵션</div>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:4px">
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
                 <input type="checkbox" id="scout-archive" onchange="updateArchiveEst()">
-                모든 프레임 아카이브 저장
+                📼 모든 프레임 아카이브 저장
+                <span id="archive-est" style="font-size:10px;color:var(--warn);margin-left:4px"></span>
               </label>
-              <span id="archive-est" style="font-size:10px;color:var(--warn)"></span>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+                <input type="checkbox" id="scout-bookend">
+                🔖 북엔드 — 시작 5분 전 기준샷 &amp; 종료 5분 후 기준샷 + 카메라 OFF
+              </label>
             </div>
             <div class="auto-hint">아카이브: 탐지 여부와 무관하게 전 프레임 저장. 탐지 트리거된 프레임은 JSON에 <code>triggered:true</code> 표시. 검증 후 삭제 권장.</div>
+            <div class="auto-hint">북엔드: 카메라 꺼져 있어도 시작 5분 전 자동 ON + 기준샷. 세션 종료 5분 후 기준샷 촬영 후 카메라 OFF 복원. UTC 시작/종료 시간 설정 시 동작.</div>
             <div class="auto-hint">링 버퍼: 항상 촬영 중 → 탐지 시 이전 N장 + 이후 N장을 한번에 저장. 같은 각도 반복(구름·은하수) 자동 억제.</div>
           </div>
 
@@ -2110,6 +2115,7 @@ async function toggleScout() {
     pre_frames:  +document.getElementById('scout-pre-frames').value  || 8,
     post_frames: +document.getElementById('scout-post-frames').value || 15,
     archive:     document.getElementById('scout-archive').checked,
+    bookend:     document.getElementById('scout-bookend').checked,
     awb: 'none', saturation: 0, sharpness: 1.5, contrast: 1.0, quality: 95,
   };
   try {
@@ -2122,8 +2128,9 @@ async function toggleScout() {
     }).then(r => r.json());
     applyScoutStatus(d);
     if (_scoutOn) {
-      const archTag = scoutParams.archive ? ' · 📼아카이브' : '';
-      showToast(`🔭 감시 시작 — ${scoutParams.shutter_ms}ms · gain ${scoutParams.gain} · pre ${scoutParams.pre_frames} / post ${scoutParams.post_frames}${archTag}`, 4000);
+      const archTag     = scoutParams.archive  ? ' · 📼아카이브' : '';
+      const bookendTag  = scoutParams.bookend  ? ' · 🔖북엔드'   : '';
+      showToast(`🔭 감시 시작 — ${scoutParams.shutter_ms}ms · gain ${scoutParams.gain} · pre ${scoutParams.pre_frames} / post ${scoutParams.post_frames}${archTag}${bookendTag}`, 4000);
     } else {
       showToast('감시 촬영 중지');
     }

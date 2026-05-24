@@ -84,6 +84,7 @@ class Camera:
         self._scout_frame_count  = 0
         self._scout_detect_count = 0
         self._scout_params       = {}
+        self._bookend_was_enabled = True   # camera state before bookend pre-shot
         self._scout_callback     = None
         self._scout_thread       = None
         self._scout_last_result  = None
@@ -1123,11 +1124,28 @@ class Camera:
     _RING_POST   = 15   # post-trigger frames to capture after event
     _RING_STATIC = 4    # suppress if same angle (±5°) repeats this many times
 
+    def _bookend_pre_run(self, fire_at, params):
+        """Sleep until fire_at (UTC), enable camera, take one bookend-pre shot."""
+        wait_s = (fire_at - datetime.utcnow()).total_seconds()
+        if wait_s > 0:
+            print(f'[북엔드] 시작 전 기준샷 대기 — {fire_at.strftime("%H:%M UTC")} ({wait_s/60:.1f}분)', flush=True)
+            time.sleep(wait_s)
+        print('[북엔드] 시작 전 기준샷 촬영 중…', flush=True)
+        if not self.is_enabled():
+            self.set_enabled(True)
+            time.sleep(5)  # 센서 워밍업
+        gps = self._scout_gps_callback() if self._scout_gps_callback else None
+        self.capture(params, gps, suffix='_bookend_pre')
+        print('[북엔드] 시작 전 기준샷 완료', flush=True)
+
     def start_scout(self, params, on_detect=None, stop_at_utc=None,
                     start_at_utc=None, gps_callback=None):
         if self._scout_enabled or self._scout_scheduled:
             return {'ok': False, 'error': '이미 감시/예약 중'}
         self._scout_gps_callback = gps_callback
+        bookend = bool(params.get('bookend', False))
+        if bookend:
+            self._bookend_was_enabled = self.is_enabled()
         start_dt = self._parse_utc_hhmm(start_at_utc)
         if start_dt:
             self._scout_scheduled = True
@@ -1136,6 +1154,15 @@ class Camera:
                                      'stop_at_utc': stop_at_utc}
             threading.Thread(target=self._scout_schedule_wait,
                              daemon=True, name='scout-sched').start()
+            if bookend:
+                pre_at = start_dt - timedelta(minutes=5)
+                bp = {k: params.get(k, v) for k, v in [
+                    ('shutter_ms', 500), ('gain', 8), ('awb', 'none'),
+                    ('saturation', 0.0), ('sharpness', 1.5),
+                    ('contrast', 1.0), ('quality', 95)]}
+                threading.Thread(target=self._bookend_pre_run,
+                                 args=(pre_at, bp),
+                                 daemon=True, name='bookend-pre').start()
             return {'ok': True, **self.get_scout_status()}
         return self._start_scout_now(params, on_detect, stop_at_utc)
 
@@ -1288,6 +1315,8 @@ class Camera:
         pre_n   = int(self._scout_params.get('pre_frames',  self._RING_PRE))
         post_n  = int(self._scout_params.get('post_frames', self._RING_POST))
         archive = bool(self._scout_params.get('archive', False))
+        bookend = bool(self._scout_params.get('bookend', False))
+        bookend_stop_at = self._scout_stop_at  # capture before it gets cleared
 
         if _HAS_PICAMERA2:
             self._scout_ring_picamera2(shutter_ms, shutter_us, gain, awb,
@@ -1297,6 +1326,26 @@ class Camera:
             self._scout_ring_subprocess(shutter_ms, shutter_us, gain, awb,
                                         saturation, sharpness, contrast, quality,
                                         pre_n, post_n, archive=archive)
+
+        # ── 북엔드 post-shot ──────────────────────────────────────
+        if bookend and bookend_stop_at:
+            post_at = bookend_stop_at + timedelta(minutes=5)
+            wait_s  = (post_at - datetime.utcnow()).total_seconds()
+            if 0 < wait_s <= 600:
+                print(f'[북엔드] 종료 후 기준샷 {wait_s:.0f}초 후…', flush=True)
+                time.sleep(wait_s)
+            print('[북엔드] 종료 후 기준샷 촬영 중…', flush=True)
+            bp = {k: self._scout_params.get(k, v) for k, v in [
+                ('shutter_ms', 500), ('gain', 8), ('awb', 'none'),
+                ('saturation', 0.0), ('sharpness', 1.5),
+                ('contrast', 1.0), ('quality', 95)]}
+            gps = self._scout_gps_callback() if self._scout_gps_callback else None
+            self.capture(bp, gps, suffix='_bookend_post')
+            print('[북엔드] 종료 후 기준샷 완료', flush=True)
+            if not self._bookend_was_enabled:
+                time.sleep(2)
+                self.set_enabled(False)
+                print('[북엔드] 카메라 비활성화', flush=True)
 
     def _make_scout_worker(self, shutter_ms, shutter_us, gain, awb,
                             saturation, sharpness, contrast, quality,
