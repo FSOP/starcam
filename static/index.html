@@ -2145,6 +2145,16 @@ function applyScoutStatus(d) {
   const last = document.getElementById('scout-last');
   const badge = document.getElementById('scout-detect-badge');
   if (!btn) return;
+  // Restore UI from server params (survives page refresh)
+  if (d.params && (d.enabled || d.scheduled)) {
+    document.getElementById('scout-shutter').value    = d.params.shutter_ms;
+    document.getElementById('scout-gain').value       = d.params.gain;
+    document.getElementById('scout-pre-frames').value = d.params.pre_frames;
+    document.getElementById('scout-post-frames').value= d.params.post_frames;
+    document.getElementById('scout-archive').checked  = d.params.archive;
+    document.getElementById('scout-bookend').checked  = d.params.bookend;
+    updateArchiveEst();
+  }
   const isScheduled = d.scheduled;
   btn.textContent = (_scoutOn || isScheduled) ? 'ON' : 'OFF';
   btn.classList.toggle('on', _scoutOn || isScheduled);

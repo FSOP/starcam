@@ -1204,6 +1204,8 @@ class Camera:
     def get_scout_status(self):
         stop_at_str  = self._scout_stop_at.strftime('%H:%M UTC')  if self._scout_stop_at  else None
         start_at_str = self._scout_start_at.strftime('%H:%M UTC') if self._scout_start_at else None
+        # include key params so UI can restore checkbox state after page refresh
+        active_params = self._scout_params or self._scout_pending.get('params', {})
         return {
             'enabled':      self._scout_enabled,
             'scheduled':    self._scout_scheduled,
@@ -1212,6 +1214,14 @@ class Camera:
             'detect_count': self._scout_detect_count,
             'last_result':  self._scout_last_result,
             'stop_at':      stop_at_str,
+            'params': {
+                'shutter_ms':  active_params.get('shutter_ms',  500),
+                'gain':        active_params.get('gain',         8),
+                'pre_frames':  active_params.get('pre_frames',   8),
+                'post_frames': active_params.get('post_frames',  15),
+                'archive':     active_params.get('archive',      False),
+                'bookend':     active_params.get('bookend',      False),
+            },
         }
 
     def _is_static_angle(self, angle_deg):
