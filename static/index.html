@@ -845,6 +845,69 @@
             <div class="auto-hint">카메라를 still 모드로 전환해 간격 없이 연속 촬영합니다. 파일명: star_..._burst.jpg</div>
           </div>
         </div><!-- /burst-sect-body -->
+        <!-- ── 촬영 예약 ───────────────────────────────────── -->
+        <div class="adv-toggle" onclick="toggleSchedJobSect()" style="margin-top:6px">
+          <span class="lbl" style="color:var(--ok)">🗓 촬영 예약</span>
+          <span class="adv-arrow" id="schedjob-sect-arrow">▼</span>
+        </div>
+        <div class="adv-body" id="schedjob-sect-body">
+          <div style="font-size:11px;color:var(--dim);margin-bottom:10px">지정 UTC 시간에 마운트 이동 → 촬영 → 카메라 끄기까지 자동 실행</div>
+
+          <!-- 새 예약 폼 -->
+          <div style="background:var(--surface2);border-radius:10px;padding:12px;margin-bottom:10px">
+            <div style="font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">새 예약 추가</div>
+            <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+              <div style="flex:1;min-width:130px">
+                <div style="font-size:10px;color:var(--dim);margin-bottom:3px">UTC 날짜</div>
+                <input id="sj-date" type="date" style="width:100%;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:12px;padding:5px 8px">
+              </div>
+              <div style="flex:1;min-width:110px">
+                <div style="font-size:10px;color:var(--dim);margin-bottom:3px">UTC 시간</div>
+                <input id="sj-time" type="time" step="1" style="width:100%;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:12px;padding:5px 8px">
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+              <div>
+                <div style="font-size:10px;color:var(--dim);margin-bottom:3px">AZ (하늘 좌표)</div>
+                <input id="sj-az" type="number" step="0.1" min="0" max="359.9" placeholder="—" style="width:100%;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--accent);font-size:13px;padding:5px 8px">
+              </div>
+              <div>
+                <div style="font-size:10px;color:var(--dim);margin-bottom:3px">EL (하늘 좌표)</div>
+                <input id="sj-el" type="number" step="0.1" min="-90" max="90" placeholder="—" style="width:100%;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--accent2);font-size:13px;padding:5px 8px">
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+              <div>
+                <div style="font-size:10px;color:var(--dim);margin-bottom:3px">노출 (ms)</div>
+                <input id="sj-shutter" type="number" value="5000" min="100" max="120000" step="100" style="width:100%;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:12px;padding:5px 8px">
+              </div>
+              <div>
+                <div style="font-size:10px;color:var(--dim);margin-bottom:3px">게인</div>
+                <input id="sj-gain" type="number" value="8" min="1" max="16" step="0.5" style="width:100%;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:12px;padding:5px 8px">
+              </div>
+              <div>
+                <div style="font-size:10px;color:var(--dim);margin-bottom:3px">장수</div>
+                <input id="sj-count" type="number" value="1" min="1" max="20" style="width:100%;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:12px;padding:5px 8px">
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer">
+                <input type="checkbox" id="sj-cam-off" checked> 촬영 후 카메라 끄기
+              </label>
+              <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--dim)">
+                이동 준비
+                <input id="sj-lead" type="number" value="90" min="10" max="300" step="10" style="width:55px;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:5px;color:var(--text);font-size:12px;padding:3px 6px;text-align:center">
+                초 전
+              </div>
+            </div>
+            <button onclick="addScheduledJob()" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--ok),#2aaa6a);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:pointer">+ 예약 추가</button>
+          </div>
+
+          <!-- 예약 목록 -->
+          <div id="sj-list" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+
+
 
         <div class="cal-result" id="cal-result">
           <div class="cal-title">자동 보정 결과</div>
@@ -3057,6 +3120,126 @@ function capJog(axis, steps) {
   .then(() => capReadMount())
   .catch(() => {});
 }
+
+/* === 촬영 예약 === */
+let _sjPollTimer = null;
+
+function toggleSchedJobSect() {
+  const body  = document.getElementById('schedjob-sect-body');
+  const arrow = document.getElementById('schedjob-sect-arrow');
+  const open  = body.classList.toggle('open');
+  arrow.classList.toggle('open', open);
+  if (open) {
+    sjInitDate();
+    sjRefresh();
+    _sjPollTimer = setInterval(sjRefresh, 5000);
+  } else {
+    clearInterval(_sjPollTimer);
+  }
+}
+
+function sjInitDate() {
+  if (document.getElementById('sj-date').value) return;
+  const now = new Date();
+  const y = now.getUTCFullYear(), m = String(now.getUTCMonth()+1).padStart(2,'0'), d = String(now.getUTCDate()).padStart(2,'0');
+  document.getElementById('sj-date').value = `${y}-${m}-${d}`;
+  const hh = String(now.getUTCHours()).padStart(2,'0'), mm = String(now.getUTCMinutes()).padStart(2,'0');
+  document.getElementById('sj-time').value = `${hh}:${mm}:00`;
+}
+
+async function addScheduledJob() {
+  const date = document.getElementById('sj-date').value;
+  const time = document.getElementById('sj-time').value;
+  if (!date || !time) { showToast('날짜와 시간을 입력하세요', 3000); return; }
+  const utc_iso = date + 'T' + (time.length === 5 ? time + ':00' : time) + 'Z';
+
+  const azVal = document.getElementById('sj-az').value;
+  const elVal = document.getElementById('sj-el').value;
+
+  const payload = {
+    utc_iso,
+    az:              azVal !== '' ? parseFloat(azVal) : null,
+    el:              elVal !== '' ? parseFloat(elVal) : null,
+    lead_secs:       parseInt(document.getElementById('sj-lead').value) || 90,
+    camera_off_after: document.getElementById('sj-cam-off').checked,
+    params: {
+      shutter_ms: parseFloat(document.getElementById('sj-shutter').value) || 5000,
+      gain:       parseFloat(document.getElementById('sj-gain').value)    || 8,
+      count:      parseInt(document.getElementById('sj-count').value)     || 1,
+      awb: 'none', saturation: 0, sharpness: 1.5, contrast: 1.0, quality: 95,
+    },
+  };
+
+  const d = await fetch('/api/schedule', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  }).then(r => r.json());
+
+  if (d.ok) {
+    showToast('예약 추가됨 — ' + d.utc_iso, 3000);
+    sjRefresh();
+  } else {
+    showToast('예약 실패: ' + d.error, 5000);
+  }
+}
+
+async function sjCancelJob(id) {
+  const d = await fetch('/api/schedule/' + id, {method: 'DELETE'}).then(r => r.json());
+  if (d.ok) sjRefresh();
+  else showToast('취소 실패: ' + d.error, 3000);
+}
+
+async function sjRefresh() {
+  const jobs = await fetch('/api/schedule').then(r => r.json()).catch(() => []);
+  const list = document.getElementById('sj-list');
+  if (!jobs.length) {
+    list.innerHTML = '<div style="font-size:11px;color:var(--dim);text-align:center;padding:10px">예약 없음</div>';
+    return;
+  }
+
+  const STATUS_COLOR = {
+    pending:   'var(--dim)',
+    warming:   'var(--warn)',
+    goto:      'var(--accent)',
+    waiting:   'var(--accent)',
+    capturing: 'var(--ok)',
+    done:      'var(--ok)',
+    error:     'var(--err)',
+    cancelled: 'var(--dim)',
+  };
+  const STATUS_ICON = {
+    pending:   '⏱',
+    warming:   '🌡',
+    goto:      '🔭',
+    waiting:   '⏳',
+    capturing: '📸',
+    done:      '✓',
+    error:     '✗',
+    cancelled: '✕',
+  };
+
+  list.innerHTML = jobs.map(j => {
+    const col      = STATUS_COLOR[j.status] || 'var(--dim)';
+    const icon     = STATUS_ICON[j.status]  || '?';
+    const canCancel = ['pending','warming','waiting'].includes(j.status);
+    const azEl = (j.az != null ? ` · AZ ${j.az.toFixed(1)}°` : '') +
+                 (j.el != null ? ` EL ${j.el.toFixed(1)}°` : '');
+    return `<div style="background:var(--surface2);border-radius:8px;padding:10px 12px;border-left:3px solid ${col}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text)">${j.utc_iso.replace('T',' ').replace('Z',' UTC')}${azEl}</div>
+          <div style="font-size:11px;color:${col};margin-top:3px">${icon} ${j.status_msg}</div>
+          <div style="font-size:10px;color:var(--dim);margin-top:2px">
+            노출 ${(j.params.shutter_ms/1000).toFixed(1)}s · 게인 ${j.params.gain} · ${j.params.count}장
+            ${j.camera_off_after ? ' · 후 카메라 끄기' : ''}
+          </div>
+        </div>
+        ${canCancel ? `<button onclick="sjCancelJob('${j.id}')" style="padding:4px 10px;background:none;border:1px solid rgba(255,77,109,.4);border-radius:6px;color:var(--err);font-size:11px;cursor:pointer;flex-shrink:0">취소</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
 
 </script>
 </body>

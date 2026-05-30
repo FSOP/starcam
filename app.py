@@ -647,6 +647,154 @@ def mount_auto_calibrate():
     })
 
 
+
+# ════════════════════════════════════════════════════════════
+#  Scheduled Capture
+# ════════════════════════════════════════════════════════════
+import uuid as _uuid
+import threading as _threading
+from datetime import datetime, timezone as _tz, timedelta as _td
+
+_scheduled_jobs = {}   # id → job dict
+_sched_lock     = _threading.Lock()
+
+def _run_scheduled_job(job):
+    try:
+        target = job['utc_dt']
+
+        # 1. Camera warmup
+        job['status'] = 'warming'
+        job['status_msg'] = '카메라 워밍업 중…'
+        if not camera.is_enabled():
+            job['_camera_was_off'] = True
+            camera.set_enabled(True)
+            import time as _time; _time.sleep(3)
+
+        # 2. Goto (if AZ/EL specified)
+        if job.get('az') is not None and job.get('el') is not None:
+            job['status'] = 'goto'
+            job['status_msg'] = f"GOTO AZ {job['az']:.1f}° EL {job['el']:.1f}°"
+            cfg    = _load_mount_cfg()
+            az_off = cfg.get('az_offset') or 0.0
+            el_off = cfg.get('el_offset') or 0.0
+            az_enc = ((job['az'] - az_off) % 360 + 360) % 360
+            el_enc = job['el'] - el_off
+            res = mount_ctrl.goto_both(az_enc, el_enc)
+            if not res.get('ok'):
+                job['status']     = 'error'
+                job['status_msg'] = 'goto 실패: ' + (res.get('error') or '?')
+                return
+
+        # 3. Wait until target time
+        import time as _time
+        now  = datetime.now(_tz.utc)
+        wait = (target - now).total_seconds()
+        if wait > 0:
+            job['status']     = 'waiting'
+            job['status_msg'] = f'{wait:.0f}초 대기 중…'
+            _time.sleep(wait)
+
+        # 4. Capture
+        if job['status'] == 'cancelled':
+            return
+        job['status']     = 'capturing'
+        job['status_msg'] = '촬영 중…'
+        gps_data = gps.get_fix()
+        cap_res  = camera.capture(job['params'], gps_data, mount_data=_get_mount_snap())
+        saved_n  = len(cap_res.get('saved') or [])
+        job['status']     = 'done'
+        job['result']     = cap_res
+        job['status_msg'] = f'{saved_n}장 저장됨' + (' · 오류: ' + cap_res['error'] if cap_res.get('error') and not saved_n else '')
+
+        # 5. Camera off
+        if job.get('camera_off_after', True):
+            _time.sleep(1)
+            camera.set_enabled(False)
+            job['status_msg'] += ' · 카메라 꺼짐'
+
+    except Exception as e:
+        job['status']     = 'error'
+        job['status_msg'] = '오류: ' + str(e)
+
+
+def _scheduler_loop():
+    import time as _time
+    while True:
+        _time.sleep(5)
+        now = datetime.now(_tz.utc)
+        with _sched_lock:
+            pending = [j for j in _scheduled_jobs.values() if j['status'] == 'pending']
+        for job in pending:
+            lead = _td(seconds=job.get('lead_secs', 90))
+            if now >= job['utc_dt'] - lead:
+                job['status'] = 'warming'   # claim before thread starts
+                _threading.Thread(target=_run_scheduled_job, args=(job,), daemon=True).start()
+
+_threading.Thread(target=_scheduler_loop, daemon=True, name='scheduler').start()
+
+
+@app.route('/api/schedule', methods=['GET'])
+def schedule_list():
+    with _sched_lock:
+        jobs = sorted(_scheduled_jobs.values(), key=lambda x: x['utc_iso'])
+    return jsonify([
+        {k: v for k, v in j.items() if not k.startswith('_') and k != 'utc_dt'}
+        for j in jobs
+    ])
+
+
+@app.route('/api/schedule', methods=['POST'])
+def schedule_add():
+    data    = request.get_json(silent=True) or {}
+    utc_iso = data.get('utc_iso', '').strip()
+    if not utc_iso:
+        return jsonify({'ok': False, 'error': 'utc_iso required'}), 400
+    try:
+        utc_dt = datetime.fromisoformat(utc_iso.replace('Z', '+00:00'))
+        if utc_dt.tzinfo is None:
+            utc_dt = utc_dt.replace(tzinfo=_tz.utc)
+    except Exception:
+        return jsonify({'ok': False, 'error': 'utc_iso 형식 오류 (예: 2026-05-31T22:30:00Z)'}), 400
+
+    now = datetime.now(_tz.utc)
+    lead = int(data.get('lead_secs', 90))
+    if utc_dt <= now + _td(seconds=lead):
+        return jsonify({'ok': False, 'error': f'이동 준비 시간({lead}s) 포함 {lead}초 이상 남은 시간만 예약 가능'}), 400
+
+    job_id = _uuid.uuid4().hex[:8]
+    job = {
+        'id':              job_id,
+        'utc_iso':         utc_dt.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'utc_dt':          utc_dt,
+        'az':              data.get('az'),
+        'el':              data.get('el'),
+        'params':          data.get('params', {}),
+        'lead_secs':       lead,
+        'camera_off_after': bool(data.get('camera_off_after', True)),
+        'status':          'pending',
+        'status_msg':      '대기 중',
+        'result':          None,
+        'error':           None,
+        'created_at':      now.strftime('%Y-%m-%dT%H:%M:%SZ'),
+    }
+    with _sched_lock:
+        _scheduled_jobs[job_id] = job
+    return jsonify({'ok': True, 'id': job_id, 'utc_iso': job['utc_iso']})
+
+
+@app.route('/api/schedule/<job_id>', methods=['DELETE'])
+def schedule_cancel(job_id):
+    with _sched_lock:
+        job = _scheduled_jobs.get(job_id)
+    if not job:
+        return jsonify({'ok': False, 'error': 'not found'}), 404
+    if job['status'] not in ('pending', 'warming', 'waiting'):
+        return jsonify({'ok': False, 'error': f'취소 불가 (상태: {job["status"]})'}), 400
+    job['status']     = 'cancelled'
+    job['status_msg'] = '취소됨'
+    return jsonify({'ok': True})
+
+
 if __name__ == '__main__':
     gps.start()
     camera.start()
