@@ -2683,8 +2683,10 @@ function mountGoto(axis) {
   const btnId      = axis === 'AZ' ? 'mt-goto-az-btn' : 'mt-goto-el-btn';
   const displayDeg = parseFloat(document.getElementById(inputId).value);
   if (isNaN(displayDeg)) { mountLog('목표 각도를 입력하세요'); return; }
-  const offset     = axis === 'AZ' ? (_mountSettings.az_offset || 0) : (_mountSettings.el_offset || 0);
-  const encoderDeg = displayDeg - offset;
+  const offset = axis === 'AZ' ? (_mountSettings.az_offset || 0) : (_mountSettings.el_offset || 0);
+  const raw    = displayDeg - offset;
+  // AZ wraps 0-360; negative values would confuse Arduino or cause wrong-direction rotation
+  const encoderDeg = axis === 'AZ' ? ((raw % 360) + 360) % 360 : raw;
 
   const statusEl = document.getElementById('mt-goto-status');
   const btn      = document.getElementById(btnId);
@@ -2718,7 +2720,8 @@ function mountGotoBoth() {
   const azDisp = parseFloat(document.getElementById('mt-goto-az').value);
   const elDisp = parseFloat(document.getElementById('mt-goto-el').value);
   if (isNaN(azDisp) || isNaN(elDisp)) { mountLog('AZ와 EL 각도를 모두 입력하세요'); return; }
-  const azEnc = azDisp - (_mountSettings.az_offset || 0);
+  const azRaw = azDisp - (_mountSettings.az_offset || 0);
+  const azEnc = ((azRaw % 360) + 360) % 360;
   const elEnc = elDisp - (_mountSettings.el_offset || 0);
 
   const statusEl = document.getElementById('mt-goto-status');
@@ -2778,22 +2781,22 @@ function mountCalibrate(axis) {
 }
 
 function mountSetElLimit() {
-  const minDeg = parseFloat(document.getElementById('mt-el-min').value);
-  const maxDeg = parseFloat(document.getElementById('mt-el-max').value);
-  if (isNaN(minDeg) || isNaN(maxDeg)) { mountLog('최소/최대 각도를 모두 입력하세요'); return; }
-  if (minDeg >= maxDeg) { mountLog('최솟값이 최댓값보다 작아야 합니다'); return; }
-
+  const skyMin = parseFloat(document.getElementById('mt-el-min').value);
+  const skyMax = parseFloat(document.getElementById('mt-el-max').value);
+  if (isNaN(skyMin) || isNaN(skyMax)) { mountLog('최소/최대 각도를 모두 입력하세요'); return; }
+  if (skyMin >= skyMax) { mountLog('최솟값이 최댓값보다 작아야 합니다'); return; }
+  // Send sky coords to backend — it converts to encoder using saved el_offset
   fetch('/api/mount/el_limit', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({min_deg: minDeg, max_deg: maxDeg})
+    body: JSON.stringify({min_deg: skyMin, max_deg: skyMax})
   })
   .then(r => r.json())
   .then(d => {
     if (d.ok) {
       const lbl = document.getElementById('mt-el-limit-status');
-      if (lbl) lbl.textContent = minDeg.toFixed(1) + '° ~ ' + maxDeg.toFixed(1) + '°';
-      mountLog('EL 범위 설정: ' + minDeg.toFixed(1) + '° ~ ' + maxDeg.toFixed(1) + '°');
+      if (lbl) lbl.textContent = skyMin.toFixed(1) + '° ~ ' + skyMax.toFixed(1) + '°';
+      mountLog('EL 범위 설정: ' + skyMin.toFixed(1) + '° ~ ' + skyMax.toFixed(1) + '°');
     } else {
       mountLog('EL 범위 오류: ' + (d.error || '알 수 없음'));
     }

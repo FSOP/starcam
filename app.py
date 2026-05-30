@@ -49,8 +49,9 @@ def _save_mount_cfg(updates):
 def _apply_saved_el_limit():
     cfg = _load_mount_cfg()
     if cfg["el_min"] is not None and cfg["el_max"] is not None:
+        el_off = cfg.get("el_offset") or 0.0
         try:
-            mount_ctrl.set_el_limit(cfg["el_min"], cfg["el_max"])
+            mount_ctrl.set_el_limit(cfg["el_min"] - el_off, cfg["el_max"] - el_off)
         except Exception:
             pass
 
@@ -539,14 +540,16 @@ def mount_el_limit():
         return jsonify(mount_ctrl.clear_el_limit())
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
-        min_deg = data.get('min_deg')
-        max_deg = data.get('max_deg')
-        if min_deg is None or max_deg is None:
+        sky_min = data.get('min_deg')
+        sky_max = data.get('max_deg')
+        if sky_min is None or sky_max is None:
             return jsonify({'ok': False, 'error': 'min_deg and max_deg required'}), 400
-        if float(min_deg) >= float(max_deg):
+        sky_min, sky_max = float(sky_min), float(sky_max)
+        if sky_min >= sky_max:
             return jsonify({'ok': False, 'error': 'min_deg must be less than max_deg'}), 400
-        _save_mount_cfg({'el_min': float(min_deg), 'el_max': float(max_deg)})
-        return jsonify(mount_ctrl.set_el_limit(float(min_deg), float(max_deg)))
+        cfg = _save_mount_cfg({'el_min': sky_min, 'el_max': sky_max})
+        el_off = cfg.get('el_offset') or 0.0
+        return jsonify(mount_ctrl.set_el_limit(sky_min - el_off, sky_max - el_off))
     return jsonify(mount_ctrl.status())
 
 
