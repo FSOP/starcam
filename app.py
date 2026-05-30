@@ -28,6 +28,7 @@ _MOUNT_CFG_DEFAULTS = {
     "az_offset": 0.0, "el_offset": 0.0,
     "el_min": None, "el_max": None,
     "pixel_scale": None,
+    "ra_hint": None, "dec_hint": None,
     "cal_server": "", "cal_token": "",
 }
 
@@ -558,7 +559,7 @@ def mount_el_limit():
 def mount_settings():
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
-        allowed = {'az_offset', 'el_offset', 'el_min', 'el_max', 'pixel_scale', 'cal_server', 'cal_token'}
+        allowed = {'az_offset', 'el_offset', 'el_min', 'el_max', 'pixel_scale', 'ra_hint', 'dec_hint', 'cal_server', 'cal_token'}
         cfg = _save_mount_cfg({k: v for k, v in data.items() if k in allowed})
         return jsonify({**cfg, 'ok': True})
     return jsonify(_load_mount_cfg())
@@ -600,14 +601,21 @@ def mount_auto_calibrate():
         pass
 
     pixel_scale = cfg.get('pixel_scale')
+    ra_hint     = cfg.get('ra_hint')
+    dec_hint    = cfg.get('dec_hint')
     form = {
         'timestamp': datetime.now(_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
         'lat': str(gps_data['latitude']),
         'lon': str(gps_data['longitude']),
     }
     if pixel_scale:
-        form['scale_low']  = str(round(pixel_scale * 0.8, 4))
-        form['scale_high'] = str(round(pixel_scale * 1.2, 4))
+        # Tighter range when scale is known — speeds solve from 60-180s to ~10s
+        form['scale_low']  = str(round(pixel_scale * 0.9, 4))
+        form['scale_high'] = str(round(pixel_scale * 1.1, 4))
+    if ra_hint is not None and dec_hint is not None:
+        form['ra_hint']  = str(round(ra_hint, 6))
+        form['dec_hint'] = str(round(dec_hint, 6))
+        form['radius']   = '5'   # search within 5° of last known position
 
     try:
         with open(image_path, 'rb') as img_f:
@@ -628,8 +636,11 @@ def mount_auto_calibrate():
         return jsonify({'ok': False, 'error': f'서버 오류 {code}: {msg}'}), 502
 
     updates = {}
-    if not pixel_scale and solved.get('pixel_scale'):
-        updates['pixel_scale'] = solved['pixel_scale']
+    if solved.get('pixel_scale'):
+        updates['pixel_scale'] = solved['pixel_scale']   # always update with latest
+    if solved.get('ra') is not None:
+        updates['ra_hint']  = solved['ra']
+        updates['dec_hint'] = solved['dec']
     az_offset = el_offset = None
     if enc_az is not None and solved.get('az') is not None:
         az_offset = round(solved['az'] - enc_az, 4)
