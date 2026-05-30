@@ -23,14 +23,10 @@ camera = Camera()
 gps = GPSReader()
 mount_ctrl = MountController()
 
+_mount_cache = None  # last known az/el, updated on every status poll
+
 def _get_mount_snap():
-    try:
-        st = mount_ctrl.status()
-        if st.get('connected') and st.get('az') is not None:
-            return {'az': st.get('az'), 'el': st.get('el')}
-    except Exception:
-        pass
-    return None
+    return _mount_cache
 
 
 @app.route('/')
@@ -431,7 +427,11 @@ def leds_api():
 
 @app.route('/api/mount/status')
 def mount_status():
-    return jsonify(mount_ctrl.status())
+    global _mount_cache
+    st = mount_ctrl.status()
+    if st.get('connected') and st.get('az') is not None:
+        _mount_cache = {'az': st['az'], 'el': st.get('el')}
+    return jsonify(st)
 
 
 @app.route('/api/mount/move', methods=['POST'])
