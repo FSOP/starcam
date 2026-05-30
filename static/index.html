@@ -2679,29 +2679,32 @@ function readEncoder() {
 }
 
 function mountGoto(axis) {
-  const inputId = axis === 'AZ' ? 'mt-goto-az' : 'mt-goto-el';
-  const btnId   = axis === 'AZ' ? 'mt-goto-az-btn' : 'mt-goto-el-btn';
-  const deg = parseFloat(document.getElementById(inputId).value);
-  if (isNaN(deg)) { mountLog('목표 각도를 입력하세요'); return; }
+  const inputId    = axis === 'AZ' ? 'mt-goto-az' : 'mt-goto-el';
+  const btnId      = axis === 'AZ' ? 'mt-goto-az-btn' : 'mt-goto-el-btn';
+  const displayDeg = parseFloat(document.getElementById(inputId).value);
+  if (isNaN(displayDeg)) { mountLog('목표 각도를 입력하세요'); return; }
+  const offset     = axis === 'AZ' ? (_mountSettings.az_offset || 0) : (_mountSettings.el_offset || 0);
+  const encoderDeg = displayDeg - offset;
 
   const statusEl = document.getElementById('mt-goto-status');
   const btn      = document.getElementById(btnId);
   statusEl.style.display = 'block';
-  statusEl.textContent   = axis + ' → ' + deg.toFixed(2) + '° 이동 중…';
+  statusEl.textContent   = axis + ' → ' + displayDeg.toFixed(2) + '° 이동 중…';
   btn.disabled = true;
-  mountLog(axis + ' GOTO ' + deg.toFixed(2) + '°');
+  mountLog(axis + ' GOTO ' + displayDeg.toFixed(2) + '°' + (offset ? '  (인코더 ' + encoderDeg.toFixed(2) + '°)' : ''));
 
   fetch('/api/mount/goto', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({axis, deg})
+    body: JSON.stringify({axis, deg: encoderDeg})
   })
   .then(r => r.json())
   .then(d => {
     statusEl.style.display = 'none';
     if (d.ok) {
-      const pos = axis === 'AZ' ? (d.az != null ? d.az : d.az_deg) : d.el;
-      mountLog(axis + ' 도착 → ' + (pos != null ? pos.toFixed(2) : '?') + '°' + (d.err != null ? '  오차 ' + d.err.toFixed(2) + '°' : ''));
+      const encPos  = axis === 'AZ' ? (d.az != null ? d.az : d.az_deg) : d.el;
+      const dispPos = encPos != null ? encPos + offset : null;
+      mountLog(axis + ' 도착 → ' + (dispPos != null ? dispPos.toFixed(2) : '?') + '°' + (d.err != null ? '  오차 ' + d.err.toFixed(2) + '°' : ''));
       _updateEncoder(d);
     } else {
       mountLog('GOTO 오류: ' + (d.error || '알 수 없음'));
@@ -2712,28 +2715,31 @@ function mountGoto(axis) {
 }
 
 function mountGotoBoth() {
-  const azDeg = parseFloat(document.getElementById('mt-goto-az').value);
-  const elDeg = parseFloat(document.getElementById('mt-goto-el').value);
-  if (isNaN(azDeg) || isNaN(elDeg)) { mountLog('AZ와 EL 각도를 모두 입력하세요'); return; }
+  const azDisp = parseFloat(document.getElementById('mt-goto-az').value);
+  const elDisp = parseFloat(document.getElementById('mt-goto-el').value);
+  if (isNaN(azDisp) || isNaN(elDisp)) { mountLog('AZ와 EL 각도를 모두 입력하세요'); return; }
+  const azEnc = azDisp - (_mountSettings.az_offset || 0);
+  const elEnc = elDisp - (_mountSettings.el_offset || 0);
 
   const statusEl = document.getElementById('mt-goto-status');
   const btn      = document.getElementById('mt-goto-both-btn');
   statusEl.style.display = 'block';
-  statusEl.textContent = 'AZ ' + azDeg.toFixed(2) + '° + EL ' + elDeg.toFixed(2) + '° 동시 이동 중…';
+  statusEl.textContent = 'AZ ' + azDisp.toFixed(2) + '° + EL ' + elDisp.toFixed(2) + '° 동시 이동 중…';
   btn.disabled = true;
-  mountLog('GOTO AZ ' + azDeg.toFixed(2) + '° EL ' + elDeg.toFixed(2) + '°');
+  mountLog('GOTO AZ ' + azDisp.toFixed(2) + '° EL ' + elDisp.toFixed(2) + '°' +
+    ((_mountSettings.az_offset || _mountSettings.el_offset) ? '  (인코더 AZ ' + azEnc.toFixed(2) + '° EL ' + elEnc.toFixed(2) + '°)' : ''));
 
   fetch('/api/mount/goto_both', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({az_deg: azDeg, el_deg: elDeg})
+    body: JSON.stringify({az_deg: azEnc, el_deg: elEnc})
   })
   .then(r => r.json())
   .then(d => {
     statusEl.style.display = 'none';
     if (d.ok) {
-      const az = d.az != null ? d.az.toFixed(2) : '?';
-      const el = d.el != null ? d.el.toFixed(2) : '?';
+      const az = d.az != null ? (d.az + (_mountSettings.az_offset || 0)).toFixed(2) : '?';
+      const el = d.el != null ? (d.el + (_mountSettings.el_offset || 0)).toFixed(2) : '?';
       mountLog('도착 → AZ ' + az + '°  EL ' + el + '°');
       _updateEncoder(d);
     } else {
