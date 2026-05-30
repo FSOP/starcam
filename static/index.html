@@ -2603,15 +2603,15 @@ function loadMountStatus() {
 }
 
 function _updateEncoder(d) {
-  // AZ/EL 각도 표시 (STATUS: "AZ: 132.36  EL: 110.74" → d.az, d.el)
+  // AZ/EL 각도 표시 — 오프셋 적용해서 표시 좌표(sky coords)로 보여줌
   const azEl = document.getElementById('mt-enc-az');
   const elEl = document.getElementById('mt-enc-el');
-  if (d.az != null) azEl.textContent = d.az.toFixed(2);
-  else if (d.az_deg != null) azEl.textContent = d.az_deg.toFixed(2);
-  else azEl.textContent = '—';
-
-  if (d.el != null) elEl.textContent = d.el.toFixed(2);
-  else elEl.textContent = '—';
+  const azOff = _mountSettings.az_offset || 0;
+  const elOff = _mountSettings.el_offset || 0;
+  const rawAz = d.az != null ? d.az : (d.az_deg != null ? d.az_deg : null);
+  const rawEl = d.el != null ? d.el : null;
+  azEl.textContent = rawAz != null ? (rawAz + azOff).toFixed(2) : '—';
+  elEl.textContent = rawEl != null ? (rawEl + elOff).toFixed(2) : '—';
 
   // 자석 비트 배지
   function setBadge(id, val, label, onColor, onLabel, offLabel) {
