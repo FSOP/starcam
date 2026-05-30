@@ -23,6 +23,37 @@ camera = Camera()
 gps = GPSReader()
 mount_ctrl = MountController()
 
+MOUNT_CFG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mount_config.json")
+_MOUNT_CFG_DEFAULTS = {
+    "az_offset": 0.0, "el_offset": 0.0,
+    "el_min": None, "el_max": None,
+    "pixel_scale": None,
+    "cal_server": "", "cal_token": "",
+}
+
+def _load_mount_cfg():
+    try:
+        with open(MOUNT_CFG_PATH) as f:
+            cfg = json.load(f)
+        return {**_MOUNT_CFG_DEFAULTS, **{k: cfg[k] for k in _MOUNT_CFG_DEFAULTS if k in cfg}}
+    except Exception:
+        return dict(_MOUNT_CFG_DEFAULTS)
+
+def _save_mount_cfg(updates):
+    cfg = _load_mount_cfg()
+    cfg.update(updates)
+    with open(MOUNT_CFG_PATH, "w") as f:
+        json.dump(cfg, f, indent=2)
+    return cfg
+
+def _apply_saved_el_limit():
+    cfg = _load_mount_cfg()
+    if cfg["el_min"] is not None and cfg["el_max"] is not None:
+        try:
+            mount_ctrl.set_el_limit(cfg["el_min"], cfg["el_max"])
+        except Exception:
+            pass
+
 _mount_cache = None  # last known az/el, updated on every status poll
 
 def _get_mount_snap():
@@ -425,11 +456,17 @@ def leds_api():
 
 
 
+_mount_was_connected = False
+
 @app.route('/api/mount/status')
 def mount_status():
-    global _mount_cache
+    global _mount_cache, _mount_was_connected
     st = mount_ctrl.status()
-    if st.get('connected') and st.get('az') is not None:
+    now_conn = bool(st.get('connected'))
+    if now_conn and not _mount_was_connected:
+        _apply_saved_el_limit()
+    _mount_was_connected = now_conn
+    if now_conn and st.get('az') is not None:
         _mount_cache = {'az': st['az'], 'el': st.get('el')}
     return jsonify(st)
 
@@ -498,6 +535,7 @@ def mount_calibrate():
 @app.route('/api/mount/el_limit', methods=['GET', 'POST', 'DELETE'])
 def mount_el_limit():
     if request.method == 'DELETE':
+        _save_mount_cfg({'el_min': None, 'el_max': None})
         return jsonify(mount_ctrl.clear_el_limit())
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
@@ -507,8 +545,103 @@ def mount_el_limit():
             return jsonify({'ok': False, 'error': 'min_deg and max_deg required'}), 400
         if float(min_deg) >= float(max_deg):
             return jsonify({'ok': False, 'error': 'min_deg must be less than max_deg'}), 400
+        _save_mount_cfg({'el_min': float(min_deg), 'el_max': float(max_deg)})
         return jsonify(mount_ctrl.set_el_limit(float(min_deg), float(max_deg)))
     return jsonify(mount_ctrl.status())
+
+
+
+@app.route('/api/mount/settings', methods=['GET', 'POST'])
+def mount_settings():
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        allowed = {'az_offset', 'el_offset', 'el_min', 'el_max', 'pixel_scale', 'cal_server', 'cal_token'}
+        cfg = _save_mount_cfg({k: v for k, v in data.items() if k in allowed})
+        return jsonify({**cfg, 'ok': True})
+    return jsonify(_load_mount_cfg())
+
+
+@app.route('/api/mount/auto_calibrate', methods=['POST'])
+def mount_auto_calibrate():
+    import requests as _req
+    from datetime import datetime, timezone as _tz
+
+    data       = request.get_json(silent=True) or {}
+    cfg        = _load_mount_cfg()
+    cal_server = (data.get('cal_server') or cfg.get('cal_server') or '').rstrip('/')
+    cal_token  = data.get('cal_token')  or cfg.get('cal_token') or ''
+    if not cal_server or not cal_token:
+        return jsonify({'ok': False, 'error': 'cal_server/cal_token 미설정'}), 400
+
+    gps_data = gps.get_fix()
+    if not gps_data:
+        return jsonify({'ok': False, 'error': 'GPS fix 없음'}), 400
+
+    shutter_ms = float(data.get('shutter_ms', 5000))
+    gain       = float(data.get('gain', 12.0))
+    result = camera.capture(
+        {'shutter_ms': shutter_ms, 'gain': gain, 'awb': 'none',
+         'count': 1, 'saturation': 0, 'sharpness': 1.5, 'contrast': 1.0, 'quality': 95},
+        gps_data, suffix='_astrocal')
+    if not result.get('saved'):
+        return jsonify({'ok': False, 'error': '촬영 실패: ' + (result.get('error') or '?')}), 500
+
+    image_path = os.path.join(PHOTOS_DIR, result['saved'][0])
+
+    enc_az = enc_el = None
+    try:
+        st = mount_ctrl.status()
+        if st.get('connected') and st.get('az') is not None:
+            enc_az, enc_el = st['az'], st.get('el')
+    except Exception:
+        pass
+
+    pixel_scale = cfg.get('pixel_scale')
+    form = {
+        'timestamp': datetime.now(_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'lat': str(gps_data['latitude']),
+        'lon': str(gps_data['longitude']),
+    }
+    if pixel_scale:
+        form['scale_low']  = str(round(pixel_scale * 0.8, 4))
+        form['scale_high'] = str(round(pixel_scale * 1.2, 4))
+
+    try:
+        with open(image_path, 'rb') as img_f:
+            resp = _req.post(
+                f'{cal_server}/api/calibrate',
+                headers={'Authorization': f'Bearer {cal_token}'},
+                files={'image': img_f},
+                data=form,
+                timeout=200,
+            )
+        resp.raise_for_status()
+        solved = resp.json()
+    except _req.exceptions.Timeout:
+        return jsonify({'ok': False, 'error': 'Plate solve 타임아웃 (180s)'}), 408
+    except Exception as e:
+        code = getattr(getattr(e, 'response', None), 'status_code', 500)
+        msg  = getattr(getattr(e, 'response', None), 'text', str(e))
+        return jsonify({'ok': False, 'error': f'서버 오류 {code}: {msg}'}), 502
+
+    updates = {}
+    if not pixel_scale and solved.get('pixel_scale'):
+        updates['pixel_scale'] = solved['pixel_scale']
+    az_offset = el_offset = None
+    if enc_az is not None and solved.get('az') is not None:
+        az_offset = round(solved['az'] - enc_az, 4)
+        el_offset = round((solved.get('el') or 0) - (enc_el or 0), 4)
+        updates['az_offset'] = az_offset
+        updates['el_offset'] = el_offset
+    if updates:
+        _save_mount_cfg(updates)
+
+    return jsonify({
+        'ok': True, 'solved': solved,
+        'encoder': {'az': enc_az, 'el': enc_el},
+        'az_offset': az_offset, 'el_offset': el_offset,
+        'image': result['saved'][0],
+    })
 
 
 if __name__ == '__main__':

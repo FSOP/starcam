@@ -1056,6 +1056,26 @@
     </div>
 
     <div class="mount-card">
+      <div class="mount-card-title">자동 캘리브레이션 (Plate Solve)</div>
+      <p style="font-size:11px;color:var(--dim);margin-bottom:10px">별 이미지를 plate solve해서 인코더 오프셋을 자동 계산합니다.</p>
+      <div style="font-size:10px;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">서버 설정</div>
+      <input class="mount-input" id="ac-server" type="text" placeholder="https://..." style="width:100%;margin-bottom:6px">
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <input class="mount-input" id="ac-token" type="password" placeholder="Bearer 토큰" style="flex:1">
+        <button onclick="acSaveServerCfg()" style="padding:6px 12px;background:none;border:1px solid rgba(74,127,255,.4);border-radius:7px;color:var(--accent);font-size:11px;cursor:pointer;flex-shrink:0">저장</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:3px">노출 (ms)</div>
+          <input class="mount-input" id="ac-shutter" type="number" value="5000" min="1000" max="30000" step="500" style="width:100%"></div>
+        <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:3px">게인</div>
+          <input class="mount-input" id="ac-gain" type="number" value="12" min="1" max="16" step="0.5" style="width:100%"></div>
+      </div>
+      <button class="mount-go-btn" id="ac-btn" onclick="runAutoCalibrate()" style="width:100%;padding:10px">⭐ 캘리브레이션 시작</button>
+      <div id="ac-status" style="display:none;margin-top:8px;padding:9px 12px;background:rgba(74,127,255,.1);border-radius:8px;font-size:12px;color:var(--accent)">촬영 중…</div>
+      <div id="ac-result" style="display:none;margin-top:8px"></div>
+    </div>
+
+    <div class="mount-card">
       <div class="mount-card-title">로그</div>
       <div class="mount-log" id="mt-log">—</div>
     </div>
@@ -2562,6 +2582,7 @@ setInterval(fetchStatus, 4000);
 fetchLedStatus();
 loadSkyEvents();
 applyRatio();
+loadMountSettings();
 
 /* === Mount Control === */
 function loadMountStatus() {
@@ -2848,15 +2869,116 @@ function mountSend(axis, steps) {
 }
 
 
+
+/* === Auto Calibrate (Plate Solve) === */
+async function acSaveServerCfg() {
+  const server = document.getElementById('ac-server').value.trim();
+  const token  = document.getElementById('ac-token').value.trim();
+  await fetch('/api/mount/settings', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({cal_server: server, cal_token: token}),
+  }).catch(() => {});
+  _mountSettings.cal_server = server;
+  _mountSettings.cal_token  = token;
+  mountLog('서버 설정 저장됨');
+}
+
+async function runAutoCalibrate() {
+  const btn    = document.getElementById('ac-btn');
+  const status = document.getElementById('ac-status');
+  const result = document.getElementById('ac-result');
+  btn.disabled = true;
+  status.style.display = 'block';
+  status.textContent = '📸 캘리브레이션 촬영 중…';
+  result.style.display = 'none';
+  try {
+    status.textContent = '🔭 Plate solving 중… (최대 3분)';
+    const d = await fetch('/api/mount/auto_calibrate', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        shutter_ms: parseFloat(document.getElementById('ac-shutter').value) || 5000,
+        gain:       parseFloat(document.getElementById('ac-gain').value)    || 12,
+      }),
+    }).then(r => r.json());
+    status.style.display = 'none';
+    result.style.display = 'block';
+    if (d.ok) {
+      const s = d.solved;
+      const azOff = d.az_offset != null ? (d.az_offset >= 0 ? '+' : '') + d.az_offset.toFixed(4) + '°' : '—';
+      const elOff = d.el_offset != null ? (d.el_offset >= 0 ? '+' : '') + d.el_offset.toFixed(4) + '°' : '—';
+      result.innerHTML =
+        '<div style="background:rgba(61,220,132,.1);border:1px solid rgba(61,220,132,.25);border-radius:8px;padding:10px;font-size:11px">' +
+        '<div style="color:var(--ok);font-weight:600;margin-bottom:7px">✓ 캘리브레이션 완료</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;color:var(--text)">' +
+        '<div>풀이 AZ: <b>' + s.az.toFixed(3) + '°</b></div>' +
+        '<div>풀이 EL: <b>' + s.el.toFixed(3) + '°</b></div>' +
+        (d.encoder.az != null ? '<div>인코더 AZ: <b>' + d.encoder.az.toFixed(3) + '°</b></div>' : '') +
+        (d.encoder.el != null ? '<div>인코더 EL: <b>' + d.encoder.el.toFixed(3) + '°</b></div>' : '') +
+        '<div>AZ 오프셋: <b>' + azOff + '</b></div>' +
+        '<div>EL 오프셋: <b>' + elOff + '</b></div>' +
+        '</div>' +
+        '<div style="margin-top:6px;color:var(--dim)">' +
+        (s.fov_w ? s.fov_w.toFixed(2) + '° × ' + s.fov_h.toFixed(2) + '° · ' : '') +
+        (s.pixel_scale ? s.pixel_scale.toFixed(2) + ' arcsec/px · ' : '') +
+        s.elapsed.toFixed(1) + 's</div></div>';
+      if (d.az_offset != null) {
+        _mountSettings.az_offset = d.az_offset;
+        _mountSettings.el_offset = d.el_offset;
+        document.getElementById('cap-az-offset').value = d.az_offset;
+        document.getElementById('cap-el-offset').value = d.el_offset;
+        document.getElementById('cap-offset-info').textContent = '자동 캘리브레이션으로 업데이트됨';
+      }
+    } else {
+      result.innerHTML =
+        '<div style="color:var(--err);font-size:12px;padding:8px;background:rgba(255,77,109,.1);border-radius:8px">✗ ' +
+        (d.error || '실패') + '</div>';
+    }
+  } catch(e) {
+    status.style.display = 'none';
+    result.style.display = 'block';
+    result.innerHTML =
+      '<div style="color:var(--err);font-size:12px;padding:8px;background:rgba(255,77,109,.1);border-radius:8px">✗ 통신 오류: ' +
+      e.message + '</div>';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 /* === 촬영 탭 마운트 미니 컨트롤 === */
 let _capMountOpen = false;
 let _capMountTimer = null;
 const _CAP_OFFSET_KEY_AZ = 'mount_az_offset';
 const _CAP_OFFSET_KEY_EL = 'mount_el_offset';
 
+let _mountSettings = {az_offset:0, el_offset:0, el_min:null, el_max:null,
+                       pixel_scale:null, cal_server:'', cal_token:''};
+
+async function loadMountSettings() {
+  try {
+    const d = await fetch('/api/mount/settings').then(r => r.json());
+    _mountSettings = d;
+    document.getElementById('cap-az-offset').value = d.az_offset || 0;
+    document.getElementById('cap-el-offset').value = d.el_offset || 0;
+    const elMinEl = document.getElementById('mt-el-min');
+    if (elMinEl) {
+      if (d.el_min != null) elMinEl.value = d.el_min;
+      if (d.el_max != null) document.getElementById('mt-el-max').value = d.el_max;
+      const lbl = document.getElementById('mt-el-limit-status');
+      if (lbl) lbl.textContent = (d.el_min != null && d.el_max != null)
+        ? d.el_min.toFixed(1) + '° ~ ' + d.el_max.toFixed(1) + '° (저장됨)'
+        : '—';
+    }
+    const srv = document.getElementById('ac-server');
+    if (srv) {
+      srv.value = d.cal_server || '';
+      document.getElementById('ac-token').value = d.cal_token || '';
+    }
+  } catch(_) {}
+}
+
 function _capLoadOffset() {
-  const az = parseFloat(localStorage.getItem(_CAP_OFFSET_KEY_AZ) || '0');
-  const el = parseFloat(localStorage.getItem(_CAP_OFFSET_KEY_EL) || '0');
+  const az = _mountSettings.az_offset || parseFloat(localStorage.getItem(_CAP_OFFSET_KEY_AZ) || '0');
+  const el = _mountSettings.el_offset || parseFloat(localStorage.getItem(_CAP_OFFSET_KEY_EL) || '0');
   document.getElementById('cap-az-offset').value = az;
   document.getElementById('cap-el-offset').value = el;
   return {az, el};
@@ -2867,6 +2989,12 @@ function capSaveOffset() {
   const el = parseFloat(document.getElementById('cap-el-offset').value) || 0;
   localStorage.setItem(_CAP_OFFSET_KEY_AZ, az);
   localStorage.setItem(_CAP_OFFSET_KEY_EL, el);
+  _mountSettings.az_offset = az;
+  _mountSettings.el_offset = el;
+  fetch('/api/mount/settings', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({az_offset: az, el_offset: el}),
+  }).catch(() => {});
   document.getElementById('cap-offset-info').textContent = '저장됨 — AZ+' + az + '°  EL+' + el + '°';
   capReadMount();
 }

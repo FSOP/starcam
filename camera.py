@@ -646,7 +646,7 @@ class Camera:
             return self._capture_subprocess(*args, suffix=suffix)
 
     def _capture_picamera2(self, cam, prev_cfg, shutter_ms, shutter_us, gain, awb,
-                           count, interval, saturation, sharpness, contrast, quality, gps_data, suffix=""):
+                           count, interval, saturation, sharpness, contrast, quality, gps_data, mount_data=None, suffix=""):
         controls = {
             "ExposureTime": shutter_us, "AnalogueGain": float(gain),
             "Saturation": float(saturation), "Sharpness": float(sharpness),
@@ -721,7 +721,7 @@ class Camera:
                 'error': last_error if not saved else None}
 
     def _capture_subprocess(self, shutter_ms, shutter_us, gain, awb,
-                            count, interval, saturation, sharpness, contrast, quality, gps_data, suffix=""):
+                            count, interval, saturation, sharpness, contrast, quality, gps_data, mount_data=None, suffix=""):
         saved, gps_saved, last_error = [], False, None
         self._capturing = True
         self._wait_preview_stop()
