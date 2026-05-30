@@ -9,14 +9,28 @@ import zipfile
 from flask import Flask, Response, jsonify, request, send_from_directory, send_file, abort
 from camera import Camera
 from gps_reader import GPSReader
+from mount import MountController
 
 PHOTOS_DIR = os.path.expanduser('~/photos')
+THUMBS_DIR = os.path.expanduser('~/photos/.thumbs')
+THUMB_SIZE  = (240, 180)
+THUMB_QUAL  = 55
 
 ALLOWED_BAUDS = [4800, 9600, 19200, 38400, 57600, 115200]
 
 app = Flask(__name__, static_folder='static')
 camera = Camera()
 gps = GPSReader()
+mount_ctrl = MountController()
+
+def _get_mount_snap():
+    try:
+        st = mount_ctrl.status()
+        if st.get('connected') and st.get('az') is not None:
+            return {'az': st.get('az'), 'el': st.get('el')}
+    except Exception:
+        pass
+    return None
 
 
 @app.route('/')
@@ -91,7 +105,7 @@ def gps_baud_set():
 def capture():
     params   = request.get_json(silent=True) or {}
     gps_data = gps.get_fix()
-    result   = camera.capture(params, gps_data)
+    result = camera.capture(params, gps_data, mount_data=_get_mount_snap())
     return jsonify(result)
 
 
@@ -101,6 +115,12 @@ def calibrate():
     shutter_ms = float(params.get('shutter_ms', 3000))
     result     = camera.calibrate(shutter_ms=shutter_ms)
     return jsonify(result)
+
+
+@app.route('/api/camera/reset', methods=['POST'])
+def camera_reset():
+    camera.reset_capture_state()
+    return jsonify({'ok': True})
 
 
 @app.route('/api/camera/toggle', methods=['POST'])
@@ -127,17 +147,26 @@ def camera_preview():
     return jsonify({'max_ms': camera.get_preview_max_ms(), 'ok': True})
 
 
+import heapq as _heapq
+
 @app.route('/api/photos')
 def list_photos():
     os.makedirs(PHOTOS_DIR, exist_ok=True)
+    # scandir: 디렉토리 한 번만 읽고 mtime으로 상위 50개만 추출 (전체 sort 불필요)
+    try:
+        entries = [
+            (e.stat().st_mtime, e.path, e.name)
+            for e in os.scandir(PHOTOS_DIR)
+            if e.name.startswith('star_') and e.name.endswith('.jpg')
+        ]
+    except Exception:
+        entries = []
+    top50 = _heapq.nlargest(50, entries, key=lambda x: x[0])
     photos = []
-    for filepath in sorted(
-        glob.glob(os.path.join(PHOTOS_DIR, 'star_*.jpg')), reverse=True
-    )[:50]:
-        filename = os.path.basename(filepath)
-        stat = os.stat(filepath)
+    for mtime, filepath, filename in top50:
+        stat_res = os.stat(filepath)
         metadata = None
-        sidecar = filepath.replace('.jpg', '.json')
+        sidecar  = filepath.replace('.jpg', '.json')
         if os.path.exists(sidecar):
             try:
                 with open(sidecar) as f:
@@ -147,8 +176,8 @@ def list_photos():
         gps_meta = metadata.get('gps') if metadata else None
         photos.append({
             'filename': filename,
-            'size':     stat.st_size,
-            'mtime':    stat.st_mtime,
+            'size':     stat_res.st_size,
+            'mtime':    mtime,
             'has_gps':  bool(gps_meta and gps_meta.get('fix')),
             'metadata': metadata,
         })
@@ -162,11 +191,42 @@ def serve_photo(filename):
     return send_from_directory(PHOTOS_DIR, filename)
 
 
+@app.route('/api/photos/<filename>/meta')
+def serve_meta(filename):
+    if not (filename.endswith('.jpg') and filename.startswith('star_')):
+        return jsonify({'error': 'invalid filename'}), 400
+    json_name = filename.replace('.jpg', '.json')
+    json_path = os.path.join(PHOTOS_DIR, json_name)
+    if not os.path.exists(json_path):
+        return jsonify({'error': 'no metadata'}), 404
+    return send_from_directory(
+        PHOTOS_DIR, json_name,
+        as_attachment=True,
+        download_name=json_name,
+        mimetype='application/json',
+    )
+
+
 @app.route('/api/photos/<filename>/thumb')
 def serve_thumb(filename):
     if not (filename.endswith('.jpg') and filename.startswith('star_')):
         return jsonify({'error': 'invalid filename'}), 400
-    return send_from_directory(PHOTOS_DIR, filename)
+    os.makedirs(THUMBS_DIR, exist_ok=True)
+    thumb_path = os.path.join(THUMBS_DIR, filename)
+    if not os.path.exists(thumb_path):
+        orig = os.path.join(PHOTOS_DIR, filename)
+        if not os.path.exists(orig):
+            return jsonify({'error': 'not found'}), 404
+        try:
+            from PIL import Image
+            img = Image.open(orig)
+            img.thumbnail(THUMB_SIZE, Image.LANCZOS)
+            img.save(thumb_path, 'JPEG', quality=THUMB_QUAL, optimize=True)
+        except Exception:
+            return send_from_directory(PHOTOS_DIR, filename)
+    resp = send_from_directory(THUMBS_DIR, filename)
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
+    return resp
 
 
 @app.route('/api/photos/download', methods=['POST'])
@@ -205,6 +265,9 @@ def delete_photo(filename):
     sidecar = filepath.replace('.jpg', '.json')
     if os.path.exists(sidecar):
         os.remove(sidecar)
+    thumb = os.path.join(THUMBS_DIR, filename)
+    if os.path.exists(thumb):
+        os.remove(thumb)
     return jsonify({'ok': True})
 
 
@@ -256,7 +319,7 @@ def burst_api():
         if action == 'start':
             params     = data.get('params', {})
             duration_s = max(10, int(data.get('duration_s', 3600)))
-            return jsonify(camera.start_burst(params, duration_s, gps_callback=gps.get_fix))
+            return jsonify(camera.start_burst(params, duration_s, gps_callback=gps.get_fix, mount_data=_get_mount_snap()))
         if action == 'stop':
             return jsonify(camera.stop_burst())
         return jsonify({'error': 'unknown action'}), 400
@@ -286,7 +349,7 @@ def scout_api():
         action = data.get('action', 'start')
         if action == 'start':
             _default_scout = {
-                'shutter_ms': 1000, 'gain': 8, 'awb': 'none',
+                'shutter_ms': 500, 'gain': 8, 'awb': 'none',
                 'saturation': 0, 'sharpness': 1.5, 'contrast': 1.0, 'quality': 95,
                 'pre_frames': 8, 'post_frames': 15,
             }
@@ -296,7 +359,8 @@ def scout_api():
             return jsonify(camera.start_scout(scout_params,
                                               stop_at_utc=stop_at,
                                               start_at_utc=start_at,
-                                              gps_callback=gps.get_fix))
+                                              gps_callback=gps.get_fix,
+                                              mount_data=_get_mount_snap()))
         if action == 'stop':
             return jsonify(camera.stop_scout())
         return jsonify({'error': 'unknown action'}), 400
@@ -361,6 +425,90 @@ def leds_api():
     pwr = _brightness('PWR')
     writeable = os.access('/sys/class/leds/ACT/brightness', os.W_OK)
     return jsonify({'act': act, 'pwr': pwr, 'controllable': writeable})
+
+
+
+
+@app.route('/api/mount/status')
+def mount_status():
+    return jsonify(mount_ctrl.status())
+
+
+@app.route('/api/mount/move', methods=['POST'])
+def mount_move():
+    data = request.get_json(silent=True) or {}
+    axis = data.get('axis', 'AZ')
+    steps = data.get('steps', 0)
+    if axis not in ('AZ', 'EL'):
+        return jsonify({'ok': False, 'error': 'axis must be AZ or EL'}), 400
+    if not isinstance(steps, (int, float)) or steps == 0:
+        return jsonify({'ok': False, 'error': 'invalid steps'}), 400
+    return jsonify(mount_ctrl.move(axis, int(steps)))
+
+
+@app.route('/api/mount/goto', methods=['POST'])
+def mount_goto():
+    data = request.get_json(silent=True) or {}
+    axis = data.get('axis', 'AZ')
+    deg  = data.get('deg')
+    if axis not in ('AZ', 'EL'):
+        return jsonify({'ok': False, 'error': 'axis must be AZ or EL'}), 400
+    if deg is None:
+        return jsonify({'ok': False, 'error': 'deg required'}), 400
+    return jsonify(mount_ctrl.goto(axis, float(deg)))
+
+
+@app.route('/api/mount/config', methods=['GET', 'POST'])
+def mount_config():
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        if 'steps_per_deg' in data:
+            return jsonify(mount_ctrl.set_steps_per_deg(data['steps_per_deg']))
+    return jsonify({'connected': mount_ctrl.is_connected()})
+
+
+@app.route('/api/mount/invert', methods=['POST'])
+def mount_invert():
+    data = request.get_json(silent=True) or {}
+    axis   = data.get('axis', 'AZ')
+    invert = int(bool(data.get('invert', False)))
+    if axis not in ('AZ', 'EL'):
+        return jsonify({'ok': False, 'error': 'axis must be AZ or EL'}), 400
+    return jsonify(mount_ctrl._send_command(f'INVERT_{axis} {invert}'))
+
+@app.route('/api/mount/goto_both', methods=['POST'])
+def mount_goto_both():
+    data   = request.get_json(silent=True) or {}
+    az_deg = data.get('az_deg')
+    el_deg = data.get('el_deg')
+    if az_deg is None or el_deg is None:
+        return jsonify({'ok': False, 'error': 'az_deg and el_deg required'}), 400
+    return jsonify(mount_ctrl.goto_both(float(az_deg), float(el_deg)))
+
+
+@app.route('/api/mount/calibrate', methods=['POST'])
+def mount_calibrate():
+    data = request.get_json(silent=True) or {}
+    axis = data.get('axis', 'AZ').upper()
+    if axis not in ('AZ', 'EL'):
+        return jsonify({'ok': False, 'error': 'axis must be AZ or EL'}), 400
+    return jsonify(mount_ctrl.calibrate(axis))
+
+
+@app.route('/api/mount/el_limit', methods=['GET', 'POST', 'DELETE'])
+def mount_el_limit():
+    if request.method == 'DELETE':
+        return jsonify(mount_ctrl.clear_el_limit())
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        min_deg = data.get('min_deg')
+        max_deg = data.get('max_deg')
+        if min_deg is None or max_deg is None:
+            return jsonify({'ok': False, 'error': 'min_deg and max_deg required'}), 400
+        if float(min_deg) >= float(max_deg):
+            return jsonify({'ok': False, 'error': 'min_deg must be less than max_deg'}), 400
+        return jsonify(mount_ctrl.set_el_limit(float(min_deg), float(max_deg)))
+    return jsonify(mount_ctrl.status())
 
 
 if __name__ == '__main__':

@@ -6,6 +6,7 @@ import statistics
 import threading
 import subprocess
 import collections
+import queue
 from datetime import datetime, timedelta, timezone
 
 try:
@@ -42,7 +43,7 @@ class Camera:
         self._latest_frame   = None
         self._frame_seq      = 0
         self._capturing      = False
-        self._preview_max_ms = 1000
+        self._preview_max_ms = 200
         self._connected      = False
 
         # auto-trigger
@@ -63,6 +64,7 @@ class Camera:
         self._burst_duration     = 0
         self._burst_thread       = None
         self._burst_gps_callback = None
+        self._burst_mount_data   = None
 
         # periodic capture
         self._per_enabled   = False
@@ -83,6 +85,7 @@ class Camera:
         self._scout_frame_count  = 0
         self._scout_detect_count = 0
         self._scout_params       = {}
+        self._bookend_was_enabled = True   # camera state before bookend pre-shot
         self._scout_callback     = None
         self._scout_thread       = None
         self._scout_last_result  = None
@@ -90,6 +93,7 @@ class Camera:
         self._scout_start_at     = None  # datetime (UTC) to auto-start
         self._scout_pending      = {}    # params stored while waiting for start_at
         self._scout_gps_callback = None  # GPS fix callback for ring frames
+        self._scout_mount_data   = None  # Mount az/el snapshot for ring frames
         # Static angle history: reject repeating angles (clouds / Milky Way)
         _RING_STATIC_WIN = 4
         self._ring_angle_hist = collections.deque(maxlen=_RING_STATIC_WIN)
@@ -378,7 +382,7 @@ class Camera:
                                      daemon=True).start()
             time.sleep(5)
 
-    def start_burst(self, params, duration_s=3600, gps_callback=None):
+    def start_burst(self, params, duration_s=3600, gps_callback=None, mount_data=None):
         if self._burst_enabled:
             return {"ok": False, "error": "이미 연속촬영 중입니다"}
         self._burst_enabled      = True
@@ -386,6 +390,7 @@ class Camera:
         self._burst_started      = time.time()
         self._burst_duration     = max(10, int(duration_s))
         self._burst_gps_callback = gps_callback
+        self._burst_mount_data   = mount_data
         self._burst_thread       = threading.Thread(
             target=self._burst_loop, args=(dict(params),),
             daemon=True, name="burst")
@@ -485,7 +490,7 @@ class Camera:
                             filepath, captured_at,
                             shutter_ms, shutter_us,
                             gain, awb, 1.0, 1.5, 1.0, quality,
-                            seq, 0, 0, gps_data,
+                            seq, 0, 0, gps_data, self._burst_mount_data,
                         )
                     else:
                         print("[burst] empty frame", flush=True)
@@ -538,7 +543,7 @@ class Camera:
                             filepath, captured_at,
                             shutter_ms, shutter_us,
                             gain, awb, 1.0, 1.5, 1.0, quality,
-                            seq, 0, 0, gps_data,
+                            seq, 0, 0, gps_data, self._burst_mount_data,
                         )
                     else:
                         print("[burst] rpicam-still failed", flush=True)
@@ -564,9 +569,13 @@ class Camera:
     # ── Metadata ──────────────────────────────────────────────────
     def _save_sidecar(self, filepath, captured_at, shutter_ms, shutter_us,
                       gain, awb, saturation, sharpness, contrast, quality,
-                      seq, total, interval, gps_data):
+                      seq, total, interval, gps_data, mount_data=None):
+        utc_offset = datetime.now() - datetime.utcnow()
+        captured_at_utc = captured_at - utc_offset
         metadata = {
-            'captured_at': captured_at.isoformat(timespec='milliseconds'),
+            'captured_at':     captured_at.isoformat(timespec='milliseconds'),
+            'captured_at_utc': captured_at_utc.strftime('%Y-%m-%dT%H:%M:%S.') +
+                               f'{captured_at_utc.microsecond // 1000:03d}Z',
             'camera': {
                 'shutter_ms': shutter_ms, 'shutter_us': shutter_us,
                 'gain': gain, 'iso_equiv': gain_to_iso(gain),
@@ -577,30 +586,35 @@ class Camera:
             },
         }
         if gps_data:
-            gps_section = dict(gps_data)
-            try:
-                ms = captured_at.microsecond // 1000
-                ts = gps_section.get('timestamp', '')
-                if ts and len(ts) >= 19:
-                    gps_section['timestamp'] = ts[:19] + f'.{ms:03d}Z'
-            except Exception:
-                pass
-            metadata['gps'] = gps_section
+            metadata['gps'] = dict(gps_data)
+        if mount_data:
+            metadata['mount'] = dict(mount_data)
         with open(filepath.replace('.jpg', '.json'), 'w') as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
         return bool(gps_data)
 
+    def reset_capture_state(self):
+        """페이지 새로고침 후 stuck된 캡처 상태를 강제 해제"""
+        self._capturing = False
+        self._trig_capturing = False
+        old = self._capture_mutex
+        self._capture_mutex = threading.Lock()
+        try:
+            old.release()
+        except RuntimeError:
+            pass  # 이미 해제됐으면 무시
+
     # ── Capture ───────────────────────────────────────────────────
-    def capture(self, params, gps_data=None, suffix=''):
+    def capture(self, params, gps_data=None, suffix='', mount_data=None):
         if not self._capture_mutex.acquire(blocking=False):
             return {'saved': [], 'count': 0, 'gps_saved': False,
                     'error': '촬영 중입니다. 잠시 후 다시 시도하세요'}
         try:
-            return self._do_capture(params, gps_data, suffix)
+            return self._do_capture(params, gps_data, suffix, mount_data)
         finally:
             self._capture_mutex.release()
 
-    def _do_capture(self, params, gps_data=None, suffix=""):
+    def _do_capture(self, params, gps_data=None, suffix="", mount_data=None):
         shutter_ms  = float(params.get('shutter_ms') or params.get('shutter', 5000))
         gain        = float(params.get('gain',       8))
         awb         =       params.get('awb',        'auto')
@@ -618,7 +632,7 @@ class Camera:
         os.makedirs(PHOTOS_DIR, exist_ok=True)
         shutter_us = int(shutter_ms * 1000)
         args = (shutter_ms, shutter_us, gain, awb, count, interval,
-                saturation, sharpness, contrast, quality, gps_data)
+                saturation, sharpness, contrast, quality, gps_data, mount_data)
 
         if _HAS_PICAMERA2:
             with self._state_lock:
@@ -698,7 +712,7 @@ class Camera:
                 gps_saved |= self._save_sidecar(
                     filepath, captured_at, shutter_ms, shutter_us,
                     gain, awb, saturation, sharpness, contrast, quality,
-                    seq, count, interval, gps_data,
+                    seq, count, interval, gps_data, mount_data,
                 )
             except Exception as e:
                 last_error = str(e)
@@ -759,7 +773,7 @@ class Camera:
                 gps_saved |= self._save_sidecar(
                     filepath, captured_at, shutter_ms, shutter_us,
                     gain, awb, saturation, sharpness, contrast, quality,
-                    seq, count, interval, gps_data,
+                    seq, count, interval, gps_data, mount_data,
                 )
             except Exception as e:
                 last_error = str(e)
@@ -1067,6 +1081,8 @@ class Camera:
                 return {'detected': False, 'reason': '후보 없음'}
 
             best = max(candidates, key=lambda x: x['score'])
+            density = best['n'] / max(best['trail_len'], 1.0)
+            MIN_DENSITY = 0.25  # continuous streak ≥0.25 px⁻¹; aligned stars ≈0.05
 
             detected = (
                 best['lin']       > 0.88
@@ -1074,6 +1090,7 @@ class Camera:
                 and best['trail_w']   < best['trail_len'] * 0.40
                 and best['conc']      > 0.55
                 and MIN_ANGLE < best['angle'] < 90 - MIN_ANGLE
+                and density >= MIN_DENSITY
             )
             if detected:
                 return {
@@ -1085,16 +1102,20 @@ class Camera:
                     'concentration':  round(best['conc'], 3),
                     'angle_deg':      round(best['angle'], 1),
                     'n_bright':       best['n'],
+                    'density':        round(density, 3),
                 }
             reason = f'직선성 부족 (lin={best["lin"]:.2f}, len={best["trail_len"]:.0f}px)'
             if not (MIN_ANGLE < best['angle'] < 90 - MIN_ANGLE):
                 reason = f'수평/수직 아티팩트 제외 (angle={best["angle"]:.1f}°)'
+            elif density < MIN_DENSITY:
+                reason = f'별 직선 배열 (density={density:.3f}, n={best["n"]}, len={best["trail_len"]:.0f}px)'
             return {
                 'detected':  False,
                 'reason':    reason,
                 'linearity': round(best['lin'], 3),
                 'angle_deg': round(best['angle'], 1),
                 'n_bright':  best['n'],
+                'density':   round(density, 3),
             }
         except Exception as e:
             return {'detected': False, 'reason': str(e)}
@@ -1119,11 +1140,29 @@ class Camera:
     _RING_POST   = 15   # post-trigger frames to capture after event
     _RING_STATIC = 4    # suppress if same angle (±5°) repeats this many times
 
+    def _bookend_pre_run(self, fire_at, params):
+        """Sleep until fire_at (UTC), enable camera, take one bookend-pre shot."""
+        wait_s = (fire_at - datetime.utcnow()).total_seconds()
+        if wait_s > 0:
+            print(f'[북엔드] 시작 전 기준샷 대기 — {fire_at.strftime("%H:%M UTC")} ({wait_s/60:.1f}분)', flush=True)
+            time.sleep(wait_s)
+        print('[북엔드] 시작 전 기준샷 촬영 중…', flush=True)
+        if not self.is_enabled():
+            self.set_enabled(True)
+            time.sleep(5)  # 센서 워밍업
+        gps = self._scout_gps_callback() if self._scout_gps_callback else None
+        self.capture(params, gps, suffix='_bookend_pre')
+        print('[북엔드] 시작 전 기준샷 완료', flush=True)
+
     def start_scout(self, params, on_detect=None, stop_at_utc=None,
-                    start_at_utc=None, gps_callback=None):
+                    start_at_utc=None, gps_callback=None, mount_data=None):
         if self._scout_enabled or self._scout_scheduled:
             return {'ok': False, 'error': '이미 감시/예약 중'}
         self._scout_gps_callback = gps_callback
+        self._scout_mount_data   = mount_data
+        bookend = bool(params.get('bookend', False))
+        if bookend:
+            self._bookend_was_enabled = self.is_enabled()
         start_dt = self._parse_utc_hhmm(start_at_utc)
         if start_dt:
             self._scout_scheduled = True
@@ -1132,6 +1171,15 @@ class Camera:
                                      'stop_at_utc': stop_at_utc}
             threading.Thread(target=self._scout_schedule_wait,
                              daemon=True, name='scout-sched').start()
+            if bookend:
+                pre_at = start_dt - timedelta(minutes=5)
+                bp = {k: params.get(k, v) for k, v in [
+                    ('shutter_ms', 500), ('gain', 8), ('awb', 'none'),
+                    ('saturation', 0.0), ('sharpness', 1.5),
+                    ('contrast', 1.0), ('quality', 95)]}
+                threading.Thread(target=self._bookend_pre_run,
+                                 args=(pre_at, bp),
+                                 daemon=True, name='bookend-pre').start()
             return {'ok': True, **self.get_scout_status()}
         return self._start_scout_now(params, on_detect, stop_at_utc)
 
@@ -1173,6 +1221,8 @@ class Camera:
     def get_scout_status(self):
         stop_at_str  = self._scout_stop_at.strftime('%H:%M UTC')  if self._scout_stop_at  else None
         start_at_str = self._scout_start_at.strftime('%H:%M UTC') if self._scout_start_at else None
+        # include key params so UI can restore checkbox state after page refresh
+        active_params = self._scout_params or self._scout_pending.get('params', {})
         return {
             'enabled':      self._scout_enabled,
             'scheduled':    self._scout_scheduled,
@@ -1181,6 +1231,14 @@ class Camera:
             'detect_count': self._scout_detect_count,
             'last_result':  self._scout_last_result,
             'stop_at':      stop_at_str,
+            'params': {
+                'shutter_ms':  active_params.get('shutter_ms',  500),
+                'gain':        active_params.get('gain',         8),
+                'pre_frames':  active_params.get('pre_frames',   8),
+                'post_frames': active_params.get('post_frames',  15),
+                'archive':     active_params.get('archive',      False),
+                'bookend':     active_params.get('bookend',      False),
+            },
         }
 
     def _is_static_angle(self, angle_deg):
@@ -1191,22 +1249,70 @@ class Camera:
         angles = list(self._ring_angle_hist)
         return (max(angles) - min(angles)) < 10.0
 
+    def _save_arch_frame(self, jpeg_bytes, captured_at, frame_num,
+                         shutter_ms, shutter_us, gain, awb,
+                         saturation, sharpness, contrast, quality,
+                         gps_data=None, mount_data=None):
+        """Save every scout frame for full-session archive (verification).
+        Returns (jpg_path, json_path). JSON has triggered=False initially;
+        the detection worker updates it to True if this frame fires a ring event.
+        """
+        os.makedirs(PHOTOS_DIR, exist_ok=True)
+        ms = captured_at.microsecond // 1000
+        ts = captured_at.strftime('%Y%m%d_%H%M%S') + f'_{ms:03d}'
+        filename = f'star_{ts}_{frame_num:05d}_arch.jpg'
+        filepath = os.path.join(PHOTOS_DIR, filename)
+        with open(filepath, 'wb') as fh:
+            fh.write(jpeg_bytes)
+        utc_offset = datetime.now() - datetime.utcnow()
+        cat_utc = captured_at - utc_offset
+        metadata = {
+            'captured_at':     captured_at.isoformat(timespec='milliseconds'),
+            'captured_at_utc': cat_utc.strftime('%Y-%m-%dT%H:%M:%S.')
+                               + f'{cat_utc.microsecond // 1000:03d}Z',
+            'camera': {
+                'shutter_ms': shutter_ms, 'shutter_us': shutter_us,
+                'gain': gain, 'iso_equiv': gain_to_iso(gain),
+                'awb': awb, 'saturation': saturation,
+                'sharpness': sharpness, 'contrast': contrast, 'quality': quality,
+            },
+            'frame_num': frame_num,
+            'triggered': False,
+        }
+        if gps_data:
+            metadata['gps'] = gps_data
+        if mount_data:
+            metadata['mount'] = dict(mount_data)
+        json_path = filepath.replace('.jpg', '.json')
+        with open(json_path, 'w') as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+        return filepath, json_path
+
     def _save_ring_frame(self, jpeg_bytes, captured_at, event_tag, seq,
                          shutter_ms, shutter_us, gain, awb,
                          saturation, sharpness, contrast, quality,
-                         gps_data=None, trail=None):
-        """Write one ring-buffer frame to disk with FPN correction + sidecar."""
+                         gps_data=None, trail=None, frame_type='pre', mount_data=None):
+        """Write one ring-buffer frame to disk with FPN correction + sidecar.
+
+        frame_type : 'pre'  — before trigger (no satellite expected)
+                     'hit'  — frame that triggered detection (satellite present)
+                     'post' — after trigger (satellite exiting or gone)
+        """
         os.makedirs(PHOTOS_DIR, exist_ok=True)
         if self._fpn_enabled and _HAS_IMGLIB:
             jpeg_bytes = self._fpn_correct_jpeg(jpeg_bytes, quality)
         ms  = captured_at.microsecond // 1000
         ts  = captured_at.strftime('%Y%m%d_%H%M%S') + f'_{ms:03d}'
-        filename = f'star_{ts}_{seq:04d}_ring.jpg'
+        filename = f'star_{ts}_{seq:04d}_ring_{frame_type}.jpg'
         filepath = os.path.join(PHOTOS_DIR, filename)
         with open(filepath, 'wb') as fh:
             fh.write(jpeg_bytes)
+        utc_offset = datetime.now() - datetime.utcnow()
+        captured_at_utc = captured_at - utc_offset
         metadata = {
-            'captured_at': captured_at.isoformat(timespec='milliseconds'),
+            'captured_at':     captured_at.isoformat(timespec='milliseconds'),
+            'captured_at_utc': captured_at_utc.strftime('%Y-%m-%dT%H:%M:%S.') +
+                               f'{captured_at_utc.microsecond // 1000:03d}Z',
             'camera': {
                 'shutter_ms': shutter_ms, 'shutter_us': shutter_us,
                 'gain': gain, 'iso_equiv': gain_to_iso(gain),
@@ -1215,11 +1321,14 @@ class Camera:
             },
             'ring_event': event_tag,
             'ring_seq':   seq,
+            'ring_type':  frame_type,
         }
         if trail:
             metadata['detection'] = trail
         if gps_data:
             metadata['gps'] = gps_data
+        if mount_data:
+            metadata['mount'] = dict(mount_data)
         with open(filepath.replace('.jpg', '.json'), 'w') as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
         return filename
@@ -1234,21 +1343,118 @@ class Camera:
         saturation = float(self._scout_params.get('saturation', 0.0))
         sharpness  = float(self._scout_params.get('sharpness', 1.5))
         contrast   = float(self._scout_params.get('contrast', 1.0))
-        pre_n      = int(self._scout_params.get('pre_frames',  self._RING_PRE))
-        post_n     = int(self._scout_params.get('post_frames', self._RING_POST))
+        pre_n   = int(self._scout_params.get('pre_frames',  self._RING_PRE))
+        post_n  = int(self._scout_params.get('post_frames', self._RING_POST))
+        archive = bool(self._scout_params.get('archive', False))
+        bookend = bool(self._scout_params.get('bookend', False))
+        bookend_stop_at = self._scout_stop_at  # capture before it gets cleared
 
         if _HAS_PICAMERA2:
             self._scout_ring_picamera2(shutter_ms, shutter_us, gain, awb,
                                        saturation, sharpness, contrast, quality,
-                                       pre_n, post_n)
+                                       pre_n, post_n, archive=archive)
         else:
             self._scout_ring_subprocess(shutter_ms, shutter_us, gain, awb,
                                         saturation, sharpness, contrast, quality,
-                                        pre_n, post_n)
+                                        pre_n, post_n, archive=archive)
+
+        # ── 북엔드 post-shot ──────────────────────────────────────
+        if bookend and bookend_stop_at:
+            post_at = bookend_stop_at + timedelta(minutes=5)
+            wait_s  = (post_at - datetime.utcnow()).total_seconds()
+            if 0 < wait_s <= 600:
+                print(f'[북엔드] 종료 후 기준샷 {wait_s:.0f}초 후…', flush=True)
+                time.sleep(wait_s)
+            print('[북엔드] 종료 후 기준샷 촬영 중…', flush=True)
+            bp = {k: self._scout_params.get(k, v) for k, v in [
+                ('shutter_ms', 500), ('gain', 8), ('awb', 'none'),
+                ('saturation', 0.0), ('sharpness', 1.5),
+                ('contrast', 1.0), ('quality', 95)]}
+            gps = self._scout_gps_callback() if self._scout_gps_callback else None
+            self.capture(bp, gps, suffix='_bookend_post')
+            print('[북엔드] 종료 후 기준샷 완료', flush=True)
+            if not self._bookend_was_enabled:
+                time.sleep(2)
+                self.set_enabled(False)
+                print('[북엔드] 카메라 비활성화', flush=True)
+
+    def _make_scout_worker(self, shutter_ms, shutter_us, gain, awb,
+                            saturation, sharpness, contrast, quality,
+                            pre_n, post_n, ring, ring_lock, post_ctx, post_lock,
+                            stop_evt):
+        """Return a detection worker function for parallel scout processing."""
+
+        def _worker():
+            det_q = post_ctx['_det_q']
+            while not stop_evt.is_set():
+                try:
+                    captured_at, raw, ring_snap, arch_json_path = det_q.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+
+                try:
+                    trail = self.detect_trail(raw)
+                    self._scout_last_result = trail
+
+                    if trail.get('detected') and self._scout_enabled:
+                        angle = trail.get('angle_deg', 45.0)
+                        if self._is_static_angle(angle):
+                            continue
+
+                        with post_lock:
+                            if post_ctx['remaining'] > 0:
+                                continue  # already in post-trigger
+                            self._scout_detect_count += 1
+                            event_tag = captured_at.strftime('%Y%m%d_%H%M%S')
+                            post_ctx['event_tag'] = event_tag
+                            post_ctx['seq']       = 0
+                            post_ctx['remaining'] = post_n
+
+                        gps_data = (self._scout_gps_callback()
+                                    if self._scout_gps_callback else None)
+
+                        # Mark arch frame as triggered
+                        if arch_json_path:
+                            try:
+                                with open(arch_json_path) as f:
+                                    d = json.load(f)
+                                d['triggered'] = True
+                                with open(arch_json_path, 'w') as f:
+                                    json.dump(d, f, indent=2, ensure_ascii=False)
+                            except Exception:
+                                pass
+
+                        # Save pre-trigger frames (ring snapshot)
+                        for i, (ts, data) in enumerate(ring_snap):
+                            with post_lock:
+                                post_ctx['seq'] += 1
+                                seq = post_ctx['seq']
+                            is_hit = (i == len(ring_snap) - 1)
+                            self._save_ring_frame(
+                                data, ts, event_tag, seq,
+                                shutter_ms, shutter_us, gain, awb,
+                                saturation, sharpness, contrast, quality,
+                                gps_data=gps_data,
+                                trail=trail if is_hit else None,
+                                frame_type='hit' if is_hit else 'pre',
+                                mount_data=self._scout_mount_data)
+
+                        print(f'[scout] 이벤트 탐지 {event_tag}  '
+                              f'lin={trail.get("linearity")}  '
+                              f'ang={trail.get("angle_deg")}°  '
+                              f'len={trail.get("trail_len_px")}px', flush=True)
+
+                        if self._scout_callback:
+                            threading.Thread(target=self._scout_callback,
+                                             daemon=True).start()
+                finally:
+                    det_q.task_done()
+
+        return _worker
 
     def _scout_ring_picamera2(self, shutter_ms, shutter_us, gain, awb,
                                saturation, sharpness, contrast, quality,
-                               pre_n, post_n):
+                               pre_n, post_n, archive=False):
         with self._state_lock:
             cam      = self._cam
             prev_cfg = self._preview_config
@@ -1268,6 +1474,20 @@ class Camera:
         still_cfg = cam.create_still_configuration(
             main={'size': (1456, 1088), 'format': 'RGB888'}, controls=controls)
 
+        ring      = collections.deque(maxlen=pre_n)
+        ring_lock = threading.Lock()
+        post_lock = threading.Lock()
+        stop_evt  = threading.Event()
+        det_q     = queue.Queue(maxsize=1)
+        post_ctx  = {'remaining': 0, 'event_tag': None, 'seq': 0, '_det_q': det_q}
+
+        worker_fn = self._make_scout_worker(
+            shutter_ms, shutter_us, gain, awb,
+            saturation, sharpness, contrast, quality,
+            pre_n, post_n, ring, ring_lock, post_ctx, post_lock, stop_evt)
+        worker = threading.Thread(target=worker_fn, daemon=True, name='scout-detect')
+        worker.start()
+
         self._capturing = True
         try:
             with self._cam_op_lock:
@@ -1276,11 +1496,6 @@ class Camera:
                 cam.start()
                 time.sleep(0.5)
             cam.options['quality'] = quality
-
-            ring           = collections.deque(maxlen=pre_n)
-            post_remaining = 0
-            event_tag      = None
-            event_seq      = 0   # global frame counter within event
 
             while self._scout_enabled:
                 if self._scout_stop_at and datetime.utcnow() >= self._scout_stop_at:
@@ -1304,59 +1519,53 @@ class Camera:
 
                 self._scout_frame_count += 1
 
-                if post_remaining > 0:
-                    # Post-trigger: save frame
-                    event_seq    += 1
-                    post_remaining -= 1
-                    gps_data = self._scout_gps_callback() if self._scout_gps_callback else None
-                    self._save_ring_frame(raw, captured_at, event_tag, event_seq,
+                with post_lock:
+                    pr        = post_ctx['remaining']
+                    event_tag = post_ctx['event_tag']
+
+                gps_data = (self._scout_gps_callback()
+                            if self._scout_gps_callback else None)
+
+                # Archive: save every frame regardless of trigger state
+                arch_json_path = None
+                if archive:
+                    _, arch_json_path = self._save_arch_frame(
+                        raw, captured_at, self._scout_frame_count,
+                        shutter_ms, shutter_us, gain, awb,
+                        saturation, sharpness, contrast, quality,
+                        gps_data=gps_data, mount_data=self._scout_mount_data)
+
+                if pr > 0:
+                    # Post-trigger: save this frame directly in capture thread
+                    with post_lock:
+                        post_ctx['seq'] += 1
+                        seq = post_ctx['seq']
+                        post_ctx['remaining'] -= 1
+                        remaining_after = post_ctx['remaining']
+
+                    self._save_ring_frame(raw, captured_at, event_tag, seq,
                                          shutter_ms, shutter_us, gain, awb,
                                          saturation, sharpness, contrast, quality,
-                                         gps_data=gps_data)
-                    if post_remaining == 0:
-                        print(f'[scout] 이벤트 {event_tag} 저장 완료 '
-                              f'({pre_n}+1+{post_n}장)', flush=True)
+                                         gps_data=gps_data, frame_type='post',
+                                         mount_data=self._scout_mount_data)
+                    if remaining_after == 0:
+                        total = pre_n + 1 + post_n
+                        print(f'[scout] 이벤트 {event_tag} 저장 완료 ({total}장)',
+                              flush=True)
+                        with ring_lock:
+                            ring.clear()
                 else:
-                    # Pre-trigger: buffer + detect (no FPN, raw for speed)
-                    ring.append((captured_at, raw))
-                    trail = self.detect_trail(raw)
-                    self._scout_last_result = trail
-
-                    if trail.get('detected') and self._scout_enabled:
-                        angle = trail.get('angle_deg', 45.0)
-                        if self._is_static_angle(angle):
-                            continue  # cloud / Milky Way suppression
-
-                        self._scout_detect_count += 1
-                        event_tag = captured_at.strftime('%Y%m%d_%H%M%S')
-                        event_seq = 0
-                        gps_data  = self._scout_gps_callback() \
-                                    if self._scout_gps_callback else None
-
-                        # Save pre-trigger ring frames
-                        ring_list = list(ring)
-                        for i, (ts, data) in enumerate(ring_list):
-                            event_seq += 1
-                            is_trigger = (i == len(ring_list) - 1)
-                            self._save_ring_frame(
-                                data, ts, event_tag, event_seq,
-                                shutter_ms, shutter_us, gain, awb,
-                                saturation, sharpness, contrast, quality,
-                                gps_data=gps_data,
-                                trail=trail if is_trigger else None)
-
-                        post_remaining = post_n
-                        ring.clear()
-
-                        print(f'[scout] 이벤트 탐지 {event_tag}  '
-                              f'lin={trail.get("linearity")}  '
-                              f'ang={trail.get("angle_deg")}°  '
-                              f'len={trail.get("trail_len_px")}px', flush=True)
-
-                        if self._scout_callback:
-                            threading.Thread(target=self._scout_callback,
-                                             daemon=True).start()
+                    # Pre-trigger: add to ring, hand off to detection worker
+                    with ring_lock:
+                        ring.append((captured_at, raw))
+                        ring_snap = list(ring)
+                    try:
+                        det_q.put_nowait((captured_at, raw, ring_snap, arch_json_path))
+                    except queue.Full:
+                        pass  # worker still busy; skip detection for this frame
         finally:
+            stop_evt.set()
+            worker.join(timeout=2)
             self._capturing = False
             with self._cam_op_lock:
                 try:
@@ -1370,11 +1579,20 @@ class Camera:
     def _scout_ring_subprocess(self, shutter_ms, shutter_us, gain, awb,
                                 saturation, sharpness, contrast, quality,
                                 pre_n, post_n):
-        """Subprocess fallback: sequential capture into ring buffer via rpicam-still."""
-        ring           = collections.deque(maxlen=pre_n)
-        post_remaining = 0
-        event_tag      = None
-        event_seq      = 0
+        """Subprocess fallback with parallel detection worker."""
+        ring      = collections.deque(maxlen=pre_n)
+        ring_lock = threading.Lock()
+        post_lock = threading.Lock()
+        stop_evt  = threading.Event()
+        det_q     = queue.Queue(maxsize=1)
+        post_ctx  = {'remaining': 0, 'event_tag': None, 'seq': 0, '_det_q': det_q}
+
+        worker_fn = self._make_scout_worker(
+            shutter_ms, shutter_us, gain, awb,
+            saturation, sharpness, contrast, quality,
+            pre_n, post_n, ring, ring_lock, post_ctx, post_lock, stop_evt)
+        worker = threading.Thread(target=worker_fn, daemon=True, name='scout-detect')
+        worker.start()
 
         self._capturing = True
         self._wait_preview_stop()
@@ -1412,46 +1630,35 @@ class Camera:
 
                 self._scout_frame_count += 1
 
-                if post_remaining > 0:
-                    event_seq    += 1
-                    post_remaining -= 1
-                    gps_data = self._scout_gps_callback() if self._scout_gps_callback else None
-                    self._save_ring_frame(raw, captured_at, event_tag, event_seq,
+                with post_lock:
+                    pr        = post_ctx['remaining']
+                    event_tag = post_ctx['event_tag']
+
+                if pr > 0:
+                    with post_lock:
+                        post_ctx['seq'] += 1
+                        seq = post_ctx['seq']
+                        post_ctx['remaining'] -= 1
+                        remaining_after = post_ctx['remaining']
+                    gps_data = (self._scout_gps_callback()
+                                if self._scout_gps_callback else None)
+                    self._save_ring_frame(raw, captured_at, event_tag, seq,
                                          shutter_ms, shutter_us, gain, awb,
                                          saturation, sharpness, contrast, quality,
-                                         gps_data=gps_data)
+                                         gps_data=gps_data, frame_type='post',
+                                         mount_data=self._scout_mount_data)
+                    if remaining_after == 0:
+                        with ring_lock:
+                            ring.clear()
                 else:
-                    ring.append((captured_at, raw))
-                    trail = self.detect_trail(raw)
-                    self._scout_last_result = trail
-
-                    if trail.get('detected') and self._scout_enabled:
-                        angle = trail.get('angle_deg', 45.0)
-                        if self._is_static_angle(angle):
-                            continue
-
-                        self._scout_detect_count += 1
-                        event_tag = captured_at.strftime('%Y%m%d_%H%M%S')
-                        event_seq = 0
-                        gps_data  = self._scout_gps_callback() \
-                                    if self._scout_gps_callback else None
-
-                        ring_list = list(ring)
-                        for i, (ts, data) in enumerate(ring_list):
-                            event_seq += 1
-                            is_trigger = (i == len(ring_list) - 1)
-                            self._save_ring_frame(
-                                data, ts, event_tag, event_seq,
-                                shutter_ms, shutter_us, gain, awb,
-                                saturation, sharpness, contrast, quality,
-                                gps_data=gps_data,
-                                trail=trail if is_trigger else None)
-
-                        post_remaining = post_n
-                        ring.clear()
-
-                        if self._scout_callback:
-                            threading.Thread(target=self._scout_callback,
-                                             daemon=True).start()
+                    with ring_lock:
+                        ring.append((captured_at, raw))
+                        ring_snap = list(ring)
+                    try:
+                        det_q.put_nowait((captured_at, raw, ring_snap))
+                    except queue.Full:
+                        pass
         finally:
+            stop_evt.set()
+            worker.join(timeout=2)
             self._capturing = False
