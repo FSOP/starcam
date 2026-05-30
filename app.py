@@ -581,12 +581,14 @@ def mount_auto_calibrate():
     if not gps_data:
         return jsonify({'ok': False, 'error': 'GPS fix 없음'}), 400
 
-    shutter_ms = float(data.get('shutter_ms', 5000))
-    gain       = float(data.get('gain', 12.0))
+    shutter_ms = float(data.get('shutter_ms', 2000))
+    gain       = float(data.get('gain', 8.0))
+    import time as _tm; _t0 = _tm.time()
     result = camera.capture(
         {'shutter_ms': shutter_ms, 'gain': gain, 'awb': 'none',
          'count': 1, 'saturation': 0, 'sharpness': 1.5, 'contrast': 1.0, 'quality': 95},
         gps_data, suffix='_astrocal')
+    print(f'[autocal] capture {_tm.time()-_t0:.1f}s', flush=True)
     if not result.get('saved'):
         return jsonify({'ok': False, 'error': '촬영 실패: ' + (result.get('error') or '?')}), 500
 
@@ -628,6 +630,7 @@ def mount_auto_calibrate():
             )
         resp.raise_for_status()
         solved = resp.json()
+        print(f'[autocal] total {_tm.time()-_t0:.1f}s  server elapsed={solved.get("elapsed")}s', flush=True)
     except _req.exceptions.Timeout:
         return jsonify({'ok': False, 'error': 'Plate solve 타임아웃 (180s)'}), 408
     except Exception as e:
