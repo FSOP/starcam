@@ -242,6 +242,10 @@ star_YYYYMMDD_HHMMSS_mmm_SEQ.jpg
 }
 ```
 
+`mount.az` / `mount.el`은 원시 인코더값으로 유지한다. `_get_mount_snap()`은 설정된
+`az_offset` / `el_offset`을 함께 넣고 `az_corrected = (az + az_offset) % 360`,
+`el_corrected = el + el_offset`도 저장한다.
+
 ### 카메라 toggle
 
 `/api/camera/toggle` → `camera.set_enabled(False)` → `_run()` 루프에서 `_stop_all()` 호출 → libcamera 세션 실제 종료 (센서 전원 절감). UI 프리뷰 스트림도 멈춤.

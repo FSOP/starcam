@@ -59,8 +59,24 @@ def _apply_saved_el_limit():
 
 _mount_cache = None  # last known az/el, updated on every status poll
 
+def _with_mount_offsets(mount_data):
+    if not mount_data:
+        return None
+    out = dict(mount_data)
+    cfg = _load_mount_cfg()
+    az_off = cfg.get('az_offset') or 0.0
+    el_off = cfg.get('el_offset') or 0.0
+    out['az_offset'] = az_off
+    out['el_offset'] = el_off
+    if out.get('az') is not None:
+        out['az_corrected'] = round((float(out['az']) + az_off) % 360, 4)
+    if out.get('el') is not None:
+        out['el_corrected'] = round(float(out['el']) + el_off, 4)
+    return out
+
+
 def _get_mount_snap():
-    return _mount_cache
+    return _with_mount_offsets(_mount_cache)
 
 
 def _utc_now_iso():

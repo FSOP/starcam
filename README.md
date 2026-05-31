@@ -409,6 +409,12 @@ LEO(고도 약 500km) 위성 가시 시간대는 **시민박명 ~ 천문박명**
 - 예약으로 저장된 사진의 사이드카 JSON에는 `schedule.id`, `target_utc`, `az/el`, 촬영 파라미터가 함께 기록됩니다.
 - `/api/schedule/history?limit=100`으로 최근 예약 이벤트를 조회할 수 있습니다.
 
+### 사진 사이드카 마운트 좌표
+
+- `mount.az` / `mount.el`은 마운트 인코더 원시값입니다.
+- 마운트 보정값이 설정되어 있으면 `mount.az_offset`, `mount.el_offset`, `mount.az_corrected`, `mount.el_corrected`를 함께 저장합니다.
+- 보정 좌표는 `az_corrected = (az + az_offset) % 360`, `el_corrected = el + el_offset`로 계산합니다.
+
 ### 마운트 제어 탭
 
 - `새 사진 촬영 후 보정` 버튼은 새 `_astrocal` 사진을 촬영해 plate-solve 서버에 전송합니다.
