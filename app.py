@@ -85,17 +85,33 @@ def _load_photo_meta(filename):
 
 
 def _plate_solve_timestamp(meta, filename=None):
-    from datetime import datetime, timezone as _tz
+    from datetime import datetime, timedelta
 
     ts = meta.get('captured_at_utc') or ''
     if ts.endswith('Z'):
         return (ts.split('.')[0] if '.' in ts else ts[:-1]) + 'Z'
 
+    gps_ts = ((meta.get('gps') or {}).get('timestamp') or '').strip()
+    local_ts = meta.get('captured_at') or ''
+    if gps_ts and local_ts:
+        try:
+            local_dt = datetime.fromisoformat(local_ts)
+            gps_time = datetime.strptime(gps_ts.split('.')[0], '%H:%M:%S').time()
+            gps_dt = datetime.combine(local_dt.date(), gps_time)
+            local_utc_date = (local_dt - timedelta(hours=9)).date()
+            if gps_dt.date() > local_utc_date:
+                gps_dt -= timedelta(days=1)
+            elif gps_dt.date() < local_utc_date:
+                gps_dt += timedelta(days=1)
+            return gps_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        except Exception:
+            pass
+
     ts = meta.get('captured_at') or ''
     if ts:
         try:
             dt = datetime.fromisoformat(ts)
-            return dt.astimezone(_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            return (dt - timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M:%SZ')
         except Exception:
             pass
 
@@ -103,7 +119,7 @@ def _plate_solve_timestamp(meta, filename=None):
         try:
             parts = filename.split('_')
             dt = datetime.strptime(parts[1] + parts[2], '%Y%m%d%H%M%S')
-            return dt.astimezone(_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            return (dt - timedelta(hours=9)).strftime('%Y-%m-%dT%H:%M:%SZ')
         except Exception:
             pass
     return None

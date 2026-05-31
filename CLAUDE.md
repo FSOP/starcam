@@ -282,7 +282,7 @@ star_YYYYMMDD_HHMMSS_mmm_SEQ.jpg
 - **새 사진으로 캘리브레이션**: `새 사진 촬영 후 보정` 버튼은 새 `_astrocal` 사진을 촬영한 뒤 plate-solve 서버에 전송
 - **서버 전송 사진 표시**: 보정 완료 결과에 실제 전송한 사진 썸네일과 파일명을 표시
 - **과거 사진 재사용**: `/api/mount/auto_calibrate`에 `filename`을 보내면 새 촬영 없이 `~/photos/<filename>`과 사이드카 JSON을 사용
-- 기존 사진 보정은 사이드카의 `gps`, `captured_at_utc`, `mount` 값을 사용한다. `mount.az/el`이 없으면 solve 결과만 보여주고 오프셋은 업데이트하지 않는다.
+- 기존 사진 보정은 사이드카의 `gps`, `captured_at_utc`, `mount` 값을 사용한다. timestamp는 `captured_at_utc` → `gps.timestamp` → `captured_at - 9h` 순서로 복원한다. `mount.az/el`이 없으면 solve 결과만 보여주고 오프셋은 업데이트하지 않는다.
 - 이동식 관측소 운용이므로 모든 plate solve 요청에서 RA/Dec 힌트는 보내지 않고, 카메라/렌즈가 유지된다는 가정하에 scale hint만 보낸다. 서버 오류/타임아웃 시에도 UI에 전송한 사진을 표시한다.
 
 ### 헤더 상태 칩
