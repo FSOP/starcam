@@ -84,10 +84,28 @@ def _load_photo_meta(filename):
         return {}
 
 
-def _plate_solve_timestamp(meta):
+def _plate_solve_timestamp(meta, filename=None):
+    from datetime import datetime, timezone as _tz
+
     ts = meta.get('captured_at_utc') or ''
     if ts.endswith('Z'):
         return (ts.split('.')[0] if '.' in ts else ts[:-1]) + 'Z'
+
+    ts = meta.get('captured_at') or ''
+    if ts:
+        try:
+            dt = datetime.fromisoformat(ts)
+            return dt.astimezone(_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        except Exception:
+            pass
+
+    if filename:
+        try:
+            parts = filename.split('_')
+            dt = datetime.strptime(parts[1] + parts[2], '%Y%m%d%H%M%S')
+            return dt.astimezone(_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        except Exception:
+            pass
     return None
 
 
@@ -670,7 +688,7 @@ def mount_auto_calibrate():
             pass
 
     pixel_scale = cfg.get('pixel_scale')
-    timestamp = _plate_solve_timestamp(meta)
+    timestamp = _plate_solve_timestamp(meta, filename)
     if not timestamp:
         timestamp = datetime.now(_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
         warnings.append('촬영 UTC 시각이 없어 현재 UTC를 사용함')
