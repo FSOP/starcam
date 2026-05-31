@@ -2991,19 +2991,9 @@ async function runAutoCalibrate(filename) {
       const s = d.solved;
       const azOff = d.az_offset != null ? (d.az_offset >= 0 ? '+' : '') + d.az_offset.toFixed(4) + '°' : '—';
       const elOff = d.el_offset != null ? (d.el_offset >= 0 ? '+' : '') + d.el_offset.toFixed(4) + '°' : '—';
-      const imgHtml = d.image ? (
-        '<a href="/api/photos/' + encodeURIComponent(d.image) + '" target="_blank" ' +
-        'style="display:flex;gap:8px;align-items:center;margin-bottom:8px;color:var(--accent);text-decoration:none">' +
-        '<img src="/api/photos/' + encodeURIComponent(d.image) + '/thumb" ' +
-        'style="width:64px;height:48px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,.12)">' +
-        '<span style="word-break:break-all">서버 전송 사진<br><b>' + d.image + '</b></span></a>'
-      ) : '';
-      const warnHtml = (d.warnings || []).length
-        ? '<div style="margin-top:6px;color:var(--warn)">' + d.warnings.join('<br>') + '</div>'
-        : '';
       result.innerHTML =
         '<div style="background:rgba(61,220,132,.1);border:1px solid rgba(61,220,132,.25);border-radius:8px;padding:10px;font-size:11px">' +
-        imgHtml +
+        renderCalImage(d) +
         '<div style="color:var(--ok);font-weight:600;margin-bottom:7px">✓ 캘리브레이션 완료</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;color:var(--text)">' +
         '<div>풀이 AZ: <b>' + s.az.toFixed(3) + '°</b></div>' +
@@ -3016,7 +3006,7 @@ async function runAutoCalibrate(filename) {
         '<div style="margin-top:6px;color:var(--dim)">' +
         (s.fov_w ? s.fov_w.toFixed(2) + '° × ' + s.fov_h.toFixed(2) + '° · ' : '') +
         (s.pixel_scale ? s.pixel_scale.toFixed(2) + ' arcsec/px · ' : '') +
-        s.elapsed.toFixed(1) + 's</div>' + warnHtml + '</div>';
+        s.elapsed.toFixed(1) + 's</div>' + renderCalWarnings(d) + '</div>';
       if (d.az_offset != null) {
         _mountSettings.az_offset = d.az_offset;
         _mountSettings.el_offset = d.el_offset;
@@ -3026,8 +3016,8 @@ async function runAutoCalibrate(filename) {
       }
     } else {
       result.innerHTML =
-        '<div style="color:var(--err);font-size:12px;padding:8px;background:rgba(255,77,109,.1);border-radius:8px">✗ ' +
-        (d.error || '실패') + '</div>';
+        '<div style="color:var(--err);font-size:12px;padding:8px;background:rgba(255,77,109,.1);border-radius:8px">' +
+        renderCalImage(d) + '✗ ' + (d.error || '실패') + renderCalWarnings(d) + '</div>';
     }
   } catch(e) {
     status.style.display = 'none';
@@ -3038,6 +3028,22 @@ async function runAutoCalibrate(filename) {
   } finally {
     btn.disabled = false;
   }
+}
+
+function renderCalImage(d) {
+  if (!d || !d.image) return '';
+  const u = encodeURIComponent(d.image);
+  return '<a href="/api/photos/' + u + '" target="_blank" ' +
+    'style="display:flex;gap:8px;align-items:center;margin-bottom:8px;color:var(--accent);text-decoration:none">' +
+    '<img src="/api/photos/' + u + '/thumb" ' +
+    'style="width:64px;height:48px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,.12)">' +
+    '<span style="word-break:break-all">서버 전송 사진<br><b>' + d.image + '</b></span></a>';
+}
+
+function renderCalWarnings(d) {
+  return d && (d.warnings || []).length
+    ? '<div style="margin-top:6px;color:var(--warn)">' + d.warnings.join('<br>') + '</div>'
+    : '';
 }
 
 /* === 촬영 탭 마운트 미니 컨트롤 === */

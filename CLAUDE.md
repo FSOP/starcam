@@ -283,6 +283,7 @@ star_YYYYMMDD_HHMMSS_mmm_SEQ.jpg
 - **서버 전송 사진 표시**: 보정 완료 결과에 실제 전송한 사진 썸네일과 파일명을 표시
 - **과거 사진 재사용**: `/api/mount/auto_calibrate`에 `filename`을 보내면 새 촬영 없이 `~/photos/<filename>`과 사이드카 JSON을 사용
 - 기존 사진 보정은 사이드카의 `gps`, `captured_at_utc`, `mount` 값을 사용한다. `mount.az/el`이 없으면 solve 결과만 보여주고 오프셋은 업데이트하지 않는다.
+- 기존 사진은 저장된 RA/Dec 힌트가 다른 하늘 위치를 가리킬 수 있으므로 scale hint만 보내고 RA/Dec 힌트는 생략한다. 서버 오류/타임아웃 시에도 UI에 전송한 사진을 표시한다.
 
 ### 헤더 상태 칩
 

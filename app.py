@@ -674,7 +674,9 @@ def mount_auto_calibrate():
         # Tighter range when scale is known — speeds solve from 60-180s to ~10s
         form['scale_low']  = str(round(pixel_scale * 0.9, 4))
         form['scale_high'] = str(round(pixel_scale * 1.1, 4))
-    if ra_hint is not None and dec_hint is not None:
+    if source == 'existing' and ra_hint is not None and dec_hint is not None:
+        warnings.append('기존 사진 보정에서는 저장된 RA/Dec 힌트를 사용하지 않음')
+    elif ra_hint is not None and dec_hint is not None:
         form['ra_hint']  = str(round(ra_hint, 6))
         form['dec_hint'] = str(round(dec_hint, 6))
         form['radius']   = '5'   # search within 5° of last known position
@@ -692,11 +694,19 @@ def mount_auto_calibrate():
         solved = resp.json()
         print(f'[autocal] total {_tm.time()-_t0:.1f}s  server elapsed={solved.get("elapsed")}s', flush=True)
     except _req.exceptions.Timeout:
-        return jsonify({'ok': False, 'error': 'Plate solve 타임아웃 (180s)'}), 408
+        return jsonify({
+            'ok': False, 'error': 'Plate solve 타임아웃 (180s)',
+            'image': filename, 'source': source,
+            'timestamp': timestamp, 'warnings': warnings,
+        }), 408
     except Exception as e:
         code = getattr(getattr(e, 'response', None), 'status_code', 500)
         msg  = getattr(getattr(e, 'response', None), 'text', str(e))
-        return jsonify({'ok': False, 'error': f'서버 오류 {code}: {msg}'}), 502
+        return jsonify({
+            'ok': False, 'error': f'서버 오류 {code}: {msg}',
+            'image': filename, 'source': source,
+            'timestamp': timestamp, 'warnings': warnings,
+        }), 502
 
     updates = {}
     if solved.get('pixel_scale'):
