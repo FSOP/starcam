@@ -448,6 +448,67 @@ ssh pi 'cat ~/photos/star_20260517_105030_123_001.json | python3 -m json.tool'
 
 ---
 
+## 위성 탐지 시스템
+
+StarCam은 두 단계의 위성 탐지 파이프라인을 사용합니다.
+
+### 1단계 — 실시간 ring 트리거 (`detect_trail.py`)
+
+scout 루프가 매 프레임 호출. 밝은 위성에 최적화 (Hough + PCA, 7σ 임계값).  
+탐지 시 pre 8프레임 + hit + post 15프레임을 `ring` 디렉터리에 고화질 저장.
+
+### 2단계 — 사후 희미한 위성 탐지 (`detect_faint.py`)
+
+scout 세션 종료 후 배치 실행. **시간 차분(Temporal Differencing)** 기반으로 FPN에 묻힌 희미한 위성까지 탐지.
+
+```bash
+# 전체 scout 아카이브 스캔
+python3 detect_faint.py ~/obs/YYYYMMDD_session/scout/
+
+# 특정 구간만 빠르게 테스트
+python3 detect_faint.py ~/obs/.../scout/ --range 60 130 --verbose
+
+# 민감도 조정
+python3 detect_faint.py ~/obs/.../scout/ --sigma 3.0 --max-dim 800
+```
+
+#### 알고리즘 요약
+
+```
+1. 매 프레임: background = mean(앞뒤 ±2 프레임)
+2. diff = 현재 프레임 − background   → FPN 고정 패턴 소멸, 이동 물체만 남음
+3. diff에 row/col median 재적용       → 잔여 FPN 대각선 제거
+4. 3.5σ 임계값 마스크 → 연결 성분 추출 (n=5~60px 범위)
+5. PCA: linearity ≥ 0.88, len ≥ 6px, density ≥ 0.4, angle 8°~82°
+6. 연속 3+ 프레임에서 같은 방향 이동 확인 → 위성 궤적 확정
+```
+
+#### 2026-05-25 새벽 검증 결과 (4504프레임 / 약 75분)
+
+| 탐지기 | 탐지된 위성 | 비고 |
+|--------|------------|------|
+| `detect_trail.py` (기존) | 3건 | 밝은 위성만 |
+| `detect_faint.py` (신규) | **10건** | 희미한 위성 포함 |
+
+- 최장 궤적: 37프레임(약 37초) — 밝기 낮은 LEO 위성
+- 각도 11°~55° 범위 탐지 성공 (거의 수평 궤적 포함)
+- 처리 속도: 600px 기준 **143ms/프레임** (Pi 3B RAM 입력 시 ~142ms)
+
+#### Pi 3B 실시간 통합 계획
+
+```python
+# camera.py _scout_loop 에 추가 예정
+# 매 프레임 캡처 후:
+detect_buf.append(frame_array)          # numpy 배열 롤링 버퍼 (과거 6프레임)
+result = detect_in_diff(frame, detect_buf)
+if result:
+    fire_ring_trigger()                 # 기존 pre8+hit+post15 체계 그대로 사용
+```
+
+`detect_in_diff()` 는 순수 numpy + scipy 연산이므로 Pi 3B에서 **~142ms** (500ms 프레임 주기의 28%).
+
+---
+
 ## 백업 / 동기화
 
 이 저장소(`~/raspberryObsCode`)는 Pi의 `/home/insoo/starcam`을 rsync로 가져온 백업입니다.
