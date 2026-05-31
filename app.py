@@ -714,9 +714,10 @@ def mount_auto_calibrate():
         'lon': str(gps_data['longitude']),
     }
     if pixel_scale:
-        # Tighter range when scale is known — speeds solve from 60-180s to ~10s
-        form['scale_low']  = str(round(pixel_scale * 0.9, 4))
-        form['scale_high'] = str(round(pixel_scale * 1.1, 4))
+        # Tighter range when scale is known. v2 requires units to avoid ambiguity.
+        form['scale_low']   = str(round(pixel_scale * 0.85, 4))
+        form['scale_high']  = str(round(pixel_scale * 1.15, 4))
+        form['scale_units'] = 'arcsecperpix'
     if cfg.get('ra_hint') is not None and cfg.get('dec_hint') is not None:
         warnings.append('이동식 관측소 운용을 위해 RA/Dec 힌트는 전송하지 않음')
 
@@ -727,14 +728,57 @@ def mount_auto_calibrate():
                 headers={'Authorization': f'Bearer {cal_token}'},
                 files={'image': img_f},
                 data=form,
-                timeout=200,
+                timeout=15,
             )
         resp.raise_for_status()
-        solved = resp.json()
-        print(f'[autocal] total {_tm.time()-_t0:.1f}s  server elapsed={solved.get("elapsed")}s', flush=True)
+        upload_result = resp.json()
+        job_id = upload_result.get('job_id')
+
+        # v1 compatibility: older servers returned the solved payload directly.
+        if upload_result.get('status') == 'done' or upload_result.get('az') is not None:
+            solved = upload_result
+            job_id = upload_result.get('job_id')
+        elif job_id:
+            solved = None
+            poll_url = f'{cal_server}/api/calibrate/status/{job_id}'
+            for _ in range(100):  # 3s * 100 = max 5 minutes
+                _tm.sleep(3)
+                poll_resp = _req.get(
+                    poll_url,
+                    headers={'Authorization': f'Bearer {cal_token}'},
+                    timeout=10,
+                )
+                poll_resp.raise_for_status()
+                poll_data = poll_resp.json()
+                status = poll_data.get('status')
+                if status == 'done':
+                    solved = poll_data
+                    break
+                if status == 'error':
+                    return jsonify({
+                        'ok': False,
+                        'error': poll_data.get('error') or 'Plate solve 실패',
+                        'image': filename, 'source': source,
+                        'timestamp': timestamp, 'warnings': warnings,
+                        'job_id': job_id, 'elapsed': poll_data.get('elapsed'),
+                    }), 422
+            if solved is None:
+                return jsonify({
+                    'ok': False, 'error': 'Plate solve 타임아웃 (300s)',
+                    'image': filename, 'source': source,
+                    'timestamp': timestamp, 'warnings': warnings,
+                    'job_id': job_id,
+                }), 408
+        else:
+            return jsonify({
+                'ok': False, 'error': '서버 응답에 job_id 없음',
+                'image': filename, 'source': source,
+                'timestamp': timestamp, 'warnings': warnings,
+            }), 502
+        print(f'[autocal] total {_tm.time()-_t0:.1f}s  server elapsed={solved.get("elapsed")}s  job={job_id}', flush=True)
     except _req.exceptions.Timeout:
         return jsonify({
-            'ok': False, 'error': 'Plate solve 타임아웃 (180s)',
+            'ok': False, 'error': 'Plate solve 서버 통신 타임아웃',
             'image': filename, 'source': source,
             'timestamp': timestamp, 'warnings': warnings,
         }), 408
@@ -769,6 +813,7 @@ def mount_auto_calibrate():
         'image': filename,
         'source': source,
         'timestamp': timestamp,
+        'job_id': solved.get('job_id') or locals().get('job_id'),
         'warnings': warnings,
     })
 

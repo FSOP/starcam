@@ -2975,8 +2975,8 @@ async function runAutoCalibrate(filename) {
   result.style.display = 'none';
   try {
     status.textContent = filename
-      ? '기존 사진 Plate Solve 중… ' + filename
-      : '새로 촬영한 사진 Plate Solve 중… (최대 3분)';
+      ? '기존 사진 Plate Solve 요청/폴링 중… ' + filename
+      : '새로 촬영한 사진 Plate Solve 요청/폴링 중… (최대 5분)';
     const body = filename ? {filename} : {
       shutter_ms: parseFloat(document.getElementById('ac-shutter').value) || 2000,
       gain:       parseFloat(document.getElementById('ac-gain').value)    || 8,
@@ -3006,7 +3006,8 @@ async function runAutoCalibrate(filename) {
         '<div style="margin-top:6px;color:var(--dim)">' +
         (s.fov_w ? s.fov_w.toFixed(2) + '° × ' + s.fov_h.toFixed(2) + '° · ' : '') +
         (s.pixel_scale ? s.pixel_scale.toFixed(2) + ' arcsec/px · ' : '') +
-        s.elapsed.toFixed(1) + 's</div>' + renderCalWarnings(d) + '</div>';
+        (s.elapsed != null ? Number(s.elapsed).toFixed(1) + 's' : '') +
+        (d.job_id ? ' · job ' + escapeHtml(d.job_id) : '') + '</div>' + renderCalWarnings(d) + '</div>';
       if (d.az_offset != null) {
         _mountSettings.az_offset = d.az_offset;
         _mountSettings.el_offset = d.el_offset;

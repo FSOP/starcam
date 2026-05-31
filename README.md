@@ -408,7 +408,8 @@ LEO(고도 약 500km) 위성 가시 시간대는 **시민박명 ~ 천문박명**
 - 완료 결과에 서버로 보낸 사진 썸네일과 파일명을 표시합니다.
 - 갤러리 모달의 `이 사진으로 보정` 버튼으로 기존 사진을 재사용할 수 있습니다.
 - 기존 사진 보정은 사이드카 JSON의 GPS, `captured_at_utc`, 마운트 AZ/EL을 사용합니다. timestamp는 `captured_at_utc` → `gps.timestamp` → `captured_at - 9h` 순서로 복원합니다.
-- 이동식 관측소 운용을 전제로 모든 plate solve 요청에서 RA/Dec 힌트는 보내지 않고, 카메라/렌즈가 유지된다는 가정하에 scale hint만 보냅니다. 서버 오류/타임아웃이 나도 전송한 사진은 결과 영역에 표시됩니다.
+- plate-solve 서버 v2는 업로드 후 `job_id`를 즉시 반환하고, Pi는 `/api/calibrate/status/{job_id}`를 3초 간격으로 최대 5분 폴링합니다.
+- 이동식 관측소 운용을 전제로 모든 plate solve 요청에서 RA/Dec 힌트는 보내지 않고, 카메라/렌즈가 유지된다는 가정하에 `scale_low/high`와 `scale_units=arcsecperpix`만 보냅니다. 서버 오류/타임아웃이 나도 전송한 사진은 결과 영역에 표시됩니다.
 
 ---
 
