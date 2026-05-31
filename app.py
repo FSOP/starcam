@@ -659,8 +659,6 @@ def mount_auto_calibrate():
             pass
 
     pixel_scale = cfg.get('pixel_scale')
-    ra_hint     = cfg.get('ra_hint')
-    dec_hint    = cfg.get('dec_hint')
     timestamp = _plate_solve_timestamp(meta)
     if not timestamp:
         timestamp = datetime.now(_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -674,12 +672,8 @@ def mount_auto_calibrate():
         # Tighter range when scale is known — speeds solve from 60-180s to ~10s
         form['scale_low']  = str(round(pixel_scale * 0.9, 4))
         form['scale_high'] = str(round(pixel_scale * 1.1, 4))
-    if source == 'existing' and ra_hint is not None and dec_hint is not None:
-        warnings.append('기존 사진 보정에서는 저장된 RA/Dec 힌트를 사용하지 않음')
-    elif ra_hint is not None and dec_hint is not None:
-        form['ra_hint']  = str(round(ra_hint, 6))
-        form['dec_hint'] = str(round(dec_hint, 6))
-        form['radius']   = '5'   # search within 5° of last known position
+    if cfg.get('ra_hint') is not None and cfg.get('dec_hint') is not None:
+        warnings.append('이동식 관측소 운용을 위해 RA/Dec 힌트는 전송하지 않음')
 
     try:
         with open(image_path, 'rb') as img_f:
