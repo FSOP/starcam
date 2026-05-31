@@ -1157,6 +1157,7 @@
   <div class="modal-actions">
     <button class="btn btn-dl" onclick="downloadPhoto()">⬇ JPG</button>
     <button class="btn btn-json" onclick="downloadMeta()" id="modal-meta-btn" style="display:none">⬇ JSON</button>
+    <button class="btn" onclick="calibrateWithCurrentPhoto()" id="modal-cal-btn" style="display:none">Plate Solve</button>
     <button class="btn btn-del" onclick="deletePhoto()">삭제</button>
   </div>
 </div>
@@ -2035,6 +2036,8 @@ function openModal(photo) {
   // JSON 버튼 표시 여부
   const jsonBtn = document.getElementById('modal-meta-btn');
   if (jsonBtn) jsonBtn.style.display = photo.metadata ? '' : 'none';
+  const calBtn = document.getElementById('modal-cal-btn');
+  if (calBtn) calBtn.style.display = (gps && gps.fix) ? '' : 'none';
   if (rows.length) {
     metaDiv.innerHTML = rows.map(([k,v]) => `<div class="meta-row"><span class="meta-key">${k}</span><span class="meta-val">${v}</span></div>`).join('');
     metaDiv.classList.add('show');
@@ -2059,6 +2062,13 @@ function downloadMeta() {
   a.href = '/api/photos/' + cur.filename + '/meta';
   a.download = jsonName;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function calibrateWithCurrentPhoto() {
+  if (!cur) return;
+  const filename = cur.filename;
+  closeModal();
+  switchTab('mount');
+  runAutoCalibrate(filename);
 }
 async function deletePhoto() {
   if (!cur || !confirm(cur.filename + '\n\n삭제하시겠습니까?')) return;
@@ -2955,22 +2965,25 @@ async function acSaveServerCfg() {
   mountLog('서버 설정 저장됨');
 }
 
-async function runAutoCalibrate() {
+async function runAutoCalibrate(filename) {
   const btn    = document.getElementById('ac-btn');
   const status = document.getElementById('ac-status');
   const result = document.getElementById('ac-result');
   btn.disabled = true;
   status.style.display = 'block';
-  status.textContent = '📸 캘리브레이션 촬영 중…';
+  status.textContent = filename ? '기존 사진 준비 중…' : '📸 캘리브레이션 촬영 중…';
   result.style.display = 'none';
   try {
-    status.textContent = '🔭 Plate solving 중… (최대 3분)';
+    status.textContent = filename
+      ? '🔭 Plate solving 중… ' + filename
+      : '🔭 Plate solving 중… (최대 3분)';
+    const body = filename ? {filename} : {
+      shutter_ms: parseFloat(document.getElementById('ac-shutter').value) || 2000,
+      gain:       parseFloat(document.getElementById('ac-gain').value)    || 8,
+    };
     const d = await fetch('/api/mount/auto_calibrate', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        shutter_ms: parseFloat(document.getElementById('ac-shutter').value) || 2000,
-        gain:       parseFloat(document.getElementById('ac-gain').value)    || 8,
-      }),
+      body: JSON.stringify(body),
     }).then(r => r.json());
     status.style.display = 'none';
     result.style.display = 'block';
@@ -2978,8 +2991,19 @@ async function runAutoCalibrate() {
       const s = d.solved;
       const azOff = d.az_offset != null ? (d.az_offset >= 0 ? '+' : '') + d.az_offset.toFixed(4) + '°' : '—';
       const elOff = d.el_offset != null ? (d.el_offset >= 0 ? '+' : '') + d.el_offset.toFixed(4) + '°' : '—';
+      const imgHtml = d.image ? (
+        '<a href="/api/photos/' + encodeURIComponent(d.image) + '" target="_blank" ' +
+        'style="display:flex;gap:8px;align-items:center;margin-bottom:8px;color:var(--accent);text-decoration:none">' +
+        '<img src="/api/photos/' + encodeURIComponent(d.image) + '/thumb" ' +
+        'style="width:64px;height:48px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,.12)">' +
+        '<span style="word-break:break-all">서버 전송 사진<br><b>' + d.image + '</b></span></a>'
+      ) : '';
+      const warnHtml = (d.warnings || []).length
+        ? '<div style="margin-top:6px;color:var(--warn)">' + d.warnings.join('<br>') + '</div>'
+        : '';
       result.innerHTML =
         '<div style="background:rgba(61,220,132,.1);border:1px solid rgba(61,220,132,.25);border-radius:8px;padding:10px;font-size:11px">' +
+        imgHtml +
         '<div style="color:var(--ok);font-weight:600;margin-bottom:7px">✓ 캘리브레이션 완료</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;color:var(--text)">' +
         '<div>풀이 AZ: <b>' + s.az.toFixed(3) + '°</b></div>' +
@@ -2992,7 +3016,7 @@ async function runAutoCalibrate() {
         '<div style="margin-top:6px;color:var(--dim)">' +
         (s.fov_w ? s.fov_w.toFixed(2) + '° × ' + s.fov_h.toFixed(2) + '° · ' : '') +
         (s.pixel_scale ? s.pixel_scale.toFixed(2) + ' arcsec/px · ' : '') +
-        s.elapsed.toFixed(1) + 's</div></div>';
+        s.elapsed.toFixed(1) + 's</div>' + warnHtml + '</div>';
       if (d.az_offset != null) {
         _mountSettings.az_offset = d.az_offset;
         _mountSettings.el_offset = d.el_offset;

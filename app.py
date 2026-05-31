@@ -62,6 +62,35 @@ def _get_mount_snap():
     return _mount_cache
 
 
+def _valid_photo_name(filename):
+    return (
+        isinstance(filename, str)
+        and filename.startswith('star_')
+        and filename.endswith('.jpg')
+        and '/' not in filename
+        and '\\' not in filename
+        and '..' not in filename
+    )
+
+
+def _load_photo_meta(filename):
+    json_path = os.path.join(PHOTOS_DIR, filename.replace('.jpg', '.json'))
+    if not os.path.exists(json_path):
+        return {}
+    try:
+        with open(json_path) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _plate_solve_timestamp(meta):
+    ts = meta.get('captured_at_utc') or ''
+    if ts.endswith('Z'):
+        return (ts.split('.')[0] if '.' in ts else ts[:-1]) + 'Z'
+    return None
+
+
 @app.route('/')
 def index():
     return send_from_directory('static', 'index.html')
@@ -577,36 +606,67 @@ def mount_auto_calibrate():
     if not cal_server or not cal_token:
         return jsonify({'ok': False, 'error': 'cal_server/cal_token 미설정'}), 400
 
-    gps_data = gps.get_fix()
-    if not gps_data:
-        return jsonify({'ok': False, 'error': 'GPS fix 없음'}), 400
-
-    shutter_ms = float(data.get('shutter_ms', 2000))
-    gain       = float(data.get('gain', 8.0))
     import time as _tm; _t0 = _tm.time()
-    result = camera.capture(
-        {'shutter_ms': shutter_ms, 'gain': gain, 'awb': 'none',
-         'count': 1, 'saturation': 0, 'sharpness': 1.5, 'contrast': 1.0, 'quality': 95},
-        gps_data, suffix='_astrocal')
-    print(f'[autocal] capture {_tm.time()-_t0:.1f}s', flush=True)
-    if not result.get('saved'):
-        return jsonify({'ok': False, 'error': '촬영 실패: ' + (result.get('error') or '?')}), 500
+    filename = (data.get('filename') or '').strip()
+    meta = {}
+    source = 'capture'
+    warnings = []
 
-    image_path = os.path.join(PHOTOS_DIR, result['saved'][0])
+    if filename:
+        if not _valid_photo_name(filename):
+            return jsonify({'ok': False, 'error': 'invalid filename'}), 400
+        image_path = os.path.join(PHOTOS_DIR, filename)
+        if not os.path.exists(image_path):
+            return jsonify({'ok': False, 'error': '사진 파일 없음'}), 404
+        meta = _load_photo_meta(filename)
+        gps_data = meta.get('gps')
+        source = 'existing'
+        result = {'saved': [filename]}
+    else:
+        gps_data = gps.get_fix()
+        if not gps_data:
+            return jsonify({'ok': False, 'error': 'GPS fix 없음'}), 400
+
+        shutter_ms = float(data.get('shutter_ms', 2000))
+        gain       = float(data.get('gain', 8.0))
+        result = camera.capture(
+            {'shutter_ms': shutter_ms, 'gain': gain, 'awb': 'none',
+             'count': 1, 'saturation': 0, 'sharpness': 1.5, 'contrast': 1.0, 'quality': 95},
+            gps_data, suffix='_astrocal')
+        print(f'[autocal] capture {_tm.time()-_t0:.1f}s', flush=True)
+        if not result.get('saved'):
+            return jsonify({'ok': False, 'error': '촬영 실패: ' + (result.get('error') or '?')}), 500
+        filename = result['saved'][0]
+        image_path = os.path.join(PHOTOS_DIR, filename)
+        meta = _load_photo_meta(filename)
+
+    if not (gps_data and gps_data.get('fix') and
+            gps_data.get('latitude') is not None and gps_data.get('longitude') is not None):
+        return jsonify({'ok': False, 'error': '사진/GPS fix 없음'}), 400
 
     enc_az = enc_el = None
-    try:
-        st = mount_ctrl.status()
-        if st.get('connected') and st.get('az') is not None:
-            enc_az, enc_el = st['az'], st.get('el')
-    except Exception:
-        pass
+    mount_meta = meta.get('mount') if meta else None
+    if mount_meta and mount_meta.get('az') is not None:
+        enc_az, enc_el = mount_meta.get('az'), mount_meta.get('el')
+    elif source == 'existing':
+        warnings.append('사진 사이드카에 마운트 AZ/EL이 없어 오프셋은 업데이트하지 않음')
+    else:
+        try:
+            st = mount_ctrl.status()
+            if st.get('connected') and st.get('az') is not None:
+                enc_az, enc_el = st['az'], st.get('el')
+        except Exception:
+            pass
 
     pixel_scale = cfg.get('pixel_scale')
     ra_hint     = cfg.get('ra_hint')
     dec_hint    = cfg.get('dec_hint')
+    timestamp = _plate_solve_timestamp(meta)
+    if not timestamp:
+        timestamp = datetime.now(_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        warnings.append('촬영 UTC 시각이 없어 현재 UTC를 사용함')
     form = {
-        'timestamp': datetime.now(_tz.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'timestamp': timestamp,
         'lat': str(gps_data['latitude']),
         'lon': str(gps_data['longitude']),
     }
@@ -657,7 +717,10 @@ def mount_auto_calibrate():
         'ok': True, 'solved': solved,
         'encoder': {'az': enc_az, 'el': enc_el},
         'az_offset': az_offset, 'el_offset': el_offset,
-        'image': result['saved'][0],
+        'image': filename,
+        'source': source,
+        'timestamp': timestamp,
+        'warnings': warnings,
     })
 
 

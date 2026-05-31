@@ -213,6 +213,15 @@ GPS fix가 없으면 `"gps"` 필드는 생략됩니다.
 | POST | `/api/photos/download` | 선택 사진 ZIP 다운로드 |
 | GET | `/api/videos/<filename>` | 동영상 파일 다운로드 |
 
+### 마운트 / 캘리브레이션
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/mount/auto_calibrate` | plate solve 자동 보정. 새 촬영 또는 기존 사진 `{"filename": "star_...jpg"}` 재사용 |
+
+`/api/mount/auto_calibrate`는 기본적으로 새 `_astrocal` 사진을 촬영해 보정 서버에 전송합니다.
+요청 JSON에 `filename`을 넣으면 새 촬영 없이 `~/photos/<filename>`과 사이드카 JSON의 GPS/촬영시각/마운트 좌표를 사용합니다. 기존 사진에 `mount.az/el`이 없으면 solve 결과만 표시하고 오프셋은 업데이트하지 않습니다.
+
 #### `/api/status` 응답 예시
 
 ```json
@@ -346,13 +355,14 @@ LEO(고도 약 500km) 위성 가시 시간대는 **시민박명 ~ 천문박명**
 
 ### 화면 구성
 
-단일 HTML 파일(`static/index.html`)로 구성되며, 다음 세 탭으로 나뉩니다.
+단일 HTML 파일(`static/index.html`)로 구성되며, 다음 탭으로 나뉩니다.
 
 | 탭 | 내용 |
 |----|------|
 | **촬영** | 실시간 프리뷰 + 파라미터 컨트롤 + 모든 촬영 모드 |
 | **갤러리** | 사진 목록·다운로드·삭제 |
 | **GPS** | 상세 GPS 상태, baud 변경 |
+| **마운트 제어** | AZ/EL 이동, plate solve 자동 보정, 마운트 로그 |
 
 ### 촬영 탭 주요 기능
 
@@ -390,6 +400,14 @@ LEO(고도 약 500km) 위성 가시 시간대는 **시민박명 ~ 천문박명**
 - 멀티 선택 + 일괄 삭제 / ZIP 다운로드
 - 사진 클릭 → 메타데이터 모달 (노출·게인·GPS 위치 표시)
 - GPS 태그된 사진은 배지 표시
+- GPS fix가 저장된 사진은 모달의 `Plate Solve` 버튼으로 과거 사진 기반 캘리브레이션 가능
+
+### 마운트 제어 탭
+
+- 자동 캘리브레이션은 새 `_astrocal` 사진을 촬영해 plate-solve 서버에 전송합니다.
+- 완료 결과에 서버로 보낸 사진 썸네일과 파일명을 표시합니다.
+- 갤러리 모달의 `Plate Solve` 버튼으로 기존 사진을 재사용할 수 있습니다.
+- 기존 사진 보정은 사이드카 JSON의 GPS, `captured_at_utc`, 마운트 AZ/EL을 사용합니다.
 
 ---
 

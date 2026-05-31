@@ -78,6 +78,7 @@ starcam/
 | GET  | `/api/photos/<f>/thumb` | 썸네일 (현재 원본과 동일) |
 | POST | `/api/photos/<f>/delete` | 사진 삭제 (jpg + json 함께) |
 | POST | `/api/photos/download` | 선택 사진 ZIP 다운로드 `{"filenames": [...]}` |
+| POST | `/api/mount/auto_calibrate` | plate solve 자동 보정. 새 촬영 또는 기존 사진 `{"filename": "star_...jpg"}` 재사용 |
 
 ### `/api/status` 응답 필드
 
@@ -254,6 +255,7 @@ star_YYYYMMDD_HHMMSS_mmm_SEQ.jpg
 1. **촬영** — 카메라 프리뷰 + 파라미터 컨트롤 + 촬영/보정 버튼
 2. **갤러리** — 사진 목록, 메타데이터 모달, 다운로드/삭제
 3. **GPS** — 상세 GPS 상태, baud rate 변경
+4. **마운트 제어** — AZ/EL 이동, plate solve 자동 보정, 마운트 로그
 
 ### 촬영 탭 기능
 
@@ -273,6 +275,14 @@ star_YYYYMMDD_HHMMSS_mmm_SEQ.jpg
 - **멀티 선택**: 체크박스로 복수 선택 → 하단 선택바 표시
 - **일괄 삭제**: 선택한 사진 + json 사이드카 동시 삭제
 - **일괄 ZIP 다운로드**: "⬇ ZIP" 버튼 → 선택한 jpg + json을 서버에서 ZIP으로 묶어 전송
+- **기존 사진 Plate Solve**: GPS fix가 저장된 사진 모달에서 `Plate Solve` 버튼으로 같은 사진을 보정 서버에 재전송
+
+### 마운트 제어 탭
+
+- **자동 캘리브레이션**: 기본 버튼은 새 `_astrocal` 사진을 촬영한 뒤 plate-solve 서버에 전송
+- **서버 전송 사진 표시**: 보정 완료 결과에 실제 전송한 사진 썸네일과 파일명을 표시
+- **과거 사진 재사용**: `/api/mount/auto_calibrate`에 `filename`을 보내면 새 촬영 없이 `~/photos/<filename>`과 사이드카 JSON을 사용
+- 기존 사진 보정은 사이드카의 `gps`, `captured_at_utc`, `mount` 값을 사용한다. `mount.az/el`이 없으면 solve 결과만 보여주고 오프셋은 업데이트하지 않는다.
 
 ### 헤더 상태 칩
 
