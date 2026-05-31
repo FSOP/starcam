@@ -274,7 +274,7 @@ star_YYYYMMDD_HHMMSS_mmm_SEQ.jpg
 - **카메라 꺼짐 오버레이**: 카메라 off 상태에서 프리뷰 중앙에 대형 "카메라 켜기" 버튼
 - **GPS 예약 촬영**: `HH:MM:SS` 입력 → GPS UTC 해당 시각에 자동 촬영, 탭 위에 카운트다운 배너 표시
   - GPS UTC 오프셋을 status 폴링마다 갱신해 기기 클락으로 보간 (sub-second 정확도)
-- **위성 촬영 예약**: `/api/schedule` 예약 큐는 메모리 기반이라 재시작 시 비워진다. 실행 이력은 `schedule_history.json` 최근 200개와 예약 사진 사이드카의 `schedule` 블록에 남긴다. `/api/schedule/history?limit=100`으로 조회 가능.
+- **위성 촬영 예약**: `/api/schedule` 예약 큐는 메모리 기반이라 재시작 시 비워진다. 실행 이력은 `schedule_history.jsonl` append 로그와 예약 사진 사이드카의 `schedule` 블록에 남긴다. `/api/schedule/history?limit=100`으로 조회 가능.
 - **진행 표시**: 연속 촬영 중 프로그레스 바 + 프리뷰 오버레이에 "N/M (RAM 버퍼링)" 표시
 
 ### 갤러리 탭 기능

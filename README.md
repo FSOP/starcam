@@ -405,7 +405,7 @@ LEO(고도 약 500km) 위성 가시 시간대는 **시민박명 ~ 천문박명**
 ### 촬영 예약
 
 - 예약 목록은 앱 메모리에 유지되므로 재시작 시 현재 예약 큐는 비워집니다.
-- 예약 생성/실행/취소/오류 이벤트는 `schedule_history.json`에 최근 200개까지 누적 저장됩니다.
+- 예약 생성/실행/취소/오류 이벤트는 `schedule_history.jsonl`에 한 줄씩 append 저장됩니다.
 - 예약으로 저장된 사진의 사이드카 JSON에는 `schedule.id`, `target_utc`, `az/el`, 촬영 파라미터가 함께 기록됩니다.
 - `/api/schedule/history?limit=100`으로 최근 예약 이벤트를 조회할 수 있습니다.
 

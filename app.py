@@ -24,7 +24,7 @@ gps = GPSReader()
 mount_ctrl = MountController()
 
 MOUNT_CFG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mount_config.json")
-SCHEDULE_HISTORY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schedule_history.json")
+SCHEDULE_HISTORY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schedule_history.jsonl")
 _MOUNT_CFG_DEFAULTS = {
     "az_offset": 0.0, "el_offset": 0.0,
     "el_min": None, "el_max": None,
@@ -846,8 +846,17 @@ _schedule_history_lock = _threading.Lock()
 def _load_schedule_history():
     try:
         with open(SCHEDULE_HISTORY_PATH, encoding='utf-8') as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
+            lines = f.readlines()[-200:]
+        history = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                history.append(json.loads(line))
+            except Exception:
+                pass
+        return history
     except Exception:
         return []
 
@@ -862,13 +871,9 @@ def _append_schedule_history(job, event, **extra):
         entry.update(extra)
     try:
         with _schedule_history_lock:
-            history = _load_schedule_history()
-            history.append(entry)
-            history = history[-200:]
-            tmp = SCHEDULE_HISTORY_PATH + '.tmp'
-            with open(tmp, 'w', encoding='utf-8') as f:
-                json.dump(history, f, indent=2, ensure_ascii=False)
-            os.replace(tmp, SCHEDULE_HISTORY_PATH)
+            with open(SCHEDULE_HISTORY_PATH, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(entry, ensure_ascii=False, separators=(',', ':')))
+                f.write('\n')
     except Exception as e:
         print(f'[schedule] history write failed: {e}', flush=True)
 
