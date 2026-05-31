@@ -275,11 +275,11 @@ star_YYYYMMDD_HHMMSS_mmm_SEQ.jpg
 - **멀티 선택**: 체크박스로 복수 선택 → 하단 선택바 표시
 - **일괄 삭제**: 선택한 사진 + json 사이드카 동시 삭제
 - **일괄 ZIP 다운로드**: "⬇ ZIP" 버튼 → 선택한 jpg + json을 서버에서 ZIP으로 묶어 전송
-- **기존 사진 Plate Solve**: GPS fix가 저장된 사진 모달에서 `Plate Solve` 버튼으로 같은 사진을 보정 서버에 재전송
+- **기존 사진 보정**: GPS fix가 저장된 사진 모달에서 `이 사진으로 보정` 버튼으로 같은 사진을 보정 서버에 재전송
 
 ### 마운트 제어 탭
 
-- **자동 캘리브레이션**: 기본 버튼은 새 `_astrocal` 사진을 촬영한 뒤 plate-solve 서버에 전송
+- **새 사진으로 캘리브레이션**: `새 사진 촬영 후 보정` 버튼은 새 `_astrocal` 사진을 촬영한 뒤 plate-solve 서버에 전송
 - **서버 전송 사진 표시**: 보정 완료 결과에 실제 전송한 사진 썸네일과 파일명을 표시
 - **과거 사진 재사용**: `/api/mount/auto_calibrate`에 `filename`을 보내면 새 촬영 없이 `~/photos/<filename>`과 사이드카 JSON을 사용
 - 기존 사진 보정은 사이드카의 `gps`, `captured_at_utc`, `mount` 값을 사용한다. `mount.az/el`이 없으면 solve 결과만 보여주고 오프셋은 업데이트하지 않는다.

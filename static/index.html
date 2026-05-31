@@ -1119,8 +1119,8 @@
     </div>
 
     <div class="mount-card">
-      <div class="mount-card-title">자동 캘리브레이션 (Plate Solve)</div>
-      <p style="font-size:11px;color:var(--dim);margin-bottom:10px">별 이미지를 plate solve해서 인코더 오프셋을 자동 계산합니다.</p>
+      <div class="mount-card-title">새 사진으로 캘리브레이션</div>
+      <p style="font-size:11px;color:var(--dim);margin-bottom:10px">아래 노출/게인으로 새 별 사진을 촬영한 뒤 plate solve 서버에 전송합니다.</p>
       <div style="font-size:10px;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">서버 설정</div>
       <input class="mount-input" id="ac-server" type="text" placeholder="https://..." style="width:100%;margin-bottom:6px">
       <div style="display:flex;gap:6px;margin-bottom:10px">
@@ -1133,7 +1133,7 @@
         <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:3px">게인</div>
           <input class="mount-input" id="ac-gain" type="number" value="8" min="1" max="16" step="0.5" style="width:100%"></div>
       </div>
-      <button class="mount-go-btn" id="ac-btn" onclick="runAutoCalibrate()" style="width:100%;padding:10px">⭐ 캘리브레이션 시작</button>
+      <button class="mount-go-btn" id="ac-btn" onclick="runAutoCalibrate()" style="width:100%;padding:10px">📸 새 사진 촬영 후 보정</button>
       <div id="ac-status" style="display:none;margin-top:8px;padding:9px 12px;background:rgba(74,127,255,.1);border-radius:8px;font-size:12px;color:var(--accent)">촬영 중…</div>
       <div id="ac-result" style="display:none;margin-top:8px"></div>
     </div>
@@ -1157,7 +1157,7 @@
   <div class="modal-actions">
     <button class="btn btn-dl" onclick="downloadPhoto()">⬇ JPG</button>
     <button class="btn btn-json" onclick="downloadMeta()" id="modal-meta-btn" style="display:none">⬇ JSON</button>
-    <button class="btn" onclick="calibrateWithCurrentPhoto()" id="modal-cal-btn" style="display:none">Plate Solve</button>
+    <button class="btn" onclick="calibrateWithCurrentPhoto()" id="modal-cal-btn" style="display:none">이 사진으로 보정</button>
     <button class="btn btn-del" onclick="deletePhoto()">삭제</button>
   </div>
 </div>
@@ -2971,12 +2971,12 @@ async function runAutoCalibrate(filename) {
   const result = document.getElementById('ac-result');
   btn.disabled = true;
   status.style.display = 'block';
-  status.textContent = filename ? '기존 사진 준비 중…' : '📸 캘리브레이션 촬영 중…';
+  status.textContent = filename ? '기존 사진으로 보정 준비 중…' : '새 캘리브레이션 사진 촬영 중…';
   result.style.display = 'none';
   try {
     status.textContent = filename
-      ? '🔭 Plate solving 중… ' + filename
-      : '🔭 Plate solving 중… (최대 3분)';
+      ? '기존 사진 Plate Solve 중… ' + filename
+      : '새로 촬영한 사진 Plate Solve 중… (최대 3분)';
     const body = filename ? {filename} : {
       shutter_ms: parseFloat(document.getElementById('ac-shutter').value) || 2000,
       gain:       parseFloat(document.getElementById('ac-gain').value)    || 8,
