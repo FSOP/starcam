@@ -246,6 +246,13 @@ star_YYYYMMDD_HHMMSS_mmm_SEQ.jpg
 
 `/api/camera/toggle` → `camera.set_enabled(False)` → `_run()` 루프에서 `_stop_all()` 호출 → libcamera 세션 실제 종료 (센서 전원 절감). UI 프리뷰 스트림도 멈춤.
 
+### Scout / faint 탐지
+
+- 실시간 scout worker는 먼저 밝은 궤적용 `detect_trail()`을 실행한다.
+- 밝은 궤적이 없으면 `faint-diff`를 실행한다. 현재 프레임에서 과거 4프레임 median 배경을 빼고, compact linear cluster를 찾는다.
+- 빠른 위성을 놓치지 않기 위해 실시간 모드는 2~3프레임 confirmation을 기다리지 않는다. 1프레임 고신뢰 후보로 즉시 ring trigger를 걸고, 기존 pre/hit/post 저장 구조가 앞뒤 프레임을 보존한다. 대각선 1픽셀 streak는 8방향 연결로 묶고, 실시간 후보 크기 상한은 `faint_max_n=180`으로 둔다.
+- `scipy`가 없으면 `has_faint=false`로 표시되고 기존 밝은 궤적 탐지만 동작한다.
+
 ---
 
 ## Web UI (index.html) 기능

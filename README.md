@@ -471,10 +471,16 @@ ssh pi 'cat ~/photos/star_20260517_105030_123_001.json | python3 -m json.tool'
 
 StarCam은 두 단계의 위성 탐지 파이프라인을 사용합니다.
 
-### 1단계 — 실시간 ring 트리거 (`detect_trail.py`)
+### 1단계 — 실시간 ring 트리거 (`camera.py`)
 
-scout 루프가 매 프레임 호출. 밝은 위성에 최적화 (Hough + PCA, 7σ 임계값).  
-탐지 시 pre 8프레임 + hit + post 15프레임을 `ring` 디렉터리에 고화질 저장.
+scout 루프가 매 프레임 호출. 먼저 밝은 위성용 Hough + PCA 탐지를 실행하고,
+실패하면 과거 4프레임만으로 만든 배경과 현재 프레임을 차분해 희미한 위성을 찾습니다.
+
+빠른 위성은 여러 프레임 확인을 기다리면 지나갈 수 있으므로, 실시간 모드에서는
+1프레임 고신뢰 `faint-diff` 후보만으로도 즉시 트리거합니다. 대각선 1픽셀 streak도
+이어진 후보로 보고, 긴 streak를 위해 후보 크기 상한을 배치 분석보다 넓게 둡니다.
+기존 ring buffer가 pre 8프레임 + hit + post 15프레임을 저장하므로, 트리거 직전/직후
+사진은 같이 남습니다.
 
 ### 2단계 — 사후 희미한 위성 탐지 (`detect_faint.py`)
 
@@ -513,18 +519,19 @@ python3 detect_faint.py ~/obs/.../scout/ --sigma 3.0 --max-dim 800
 - 각도 11°~55° 범위 탐지 성공 (거의 수평 궤적 포함)
 - 처리 속도: 600px 기준 **143ms/프레임** (Pi 3B RAM 입력 시 ~142ms)
 
-#### Pi 3B 실시간 통합 계획
+#### Pi 3B 실시간 통합
 
 ```python
-# camera.py _scout_loop 에 추가 예정
-# 매 프레임 캡처 후:
-detect_buf.append(frame_array)          # numpy 배열 롤링 버퍼 (과거 6프레임)
-result = detect_in_diff(frame, detect_buf)
+# camera.py scout worker
+background = median(previous_4_frames)
+result = detect_faint_diff(current_frame - background)
 if result:
     fire_ring_trigger()                 # 기존 pre8+hit+post15 체계 그대로 사용
 ```
 
-`detect_in_diff()` 는 순수 numpy + scipy 연산이므로 Pi 3B에서 **~142ms** (500ms 프레임 주기의 28%).
+`faint-diff` 는 numpy + scipy 연산이므로 Pi에 scipy가 설치되어 있을 때 자동 활성화됩니다.
+scipy가 없으면 기존 밝은 위성 탐지만 계속 동작하고 `/api/camera/scout/status`의
+`has_faint` 값이 `false`가 됩니다.
 
 ---
 

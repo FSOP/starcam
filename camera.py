@@ -22,6 +22,13 @@ try:
 except ImportError:
     _HAS_IMGLIB = False
 
+try:
+    import scipy.ndimage as ndi
+    _HAS_SCIPY = True
+except ImportError:
+    ndi = None
+    _HAS_SCIPY = False
+
 PHOTOS_DIR = os.path.expanduser('~/photos')
 
 AWB_MODE = {
@@ -1120,6 +1127,126 @@ class Camera:
         except Exception as e:
             return {'detected': False, 'reason': str(e)}
 
+    def _load_gray_jpeg(self, image_data, max_dim=600):
+        """JPEG bytes -> grayscale float32, scaled for Pi-safe realtime diffing."""
+        img = Image.open(io.BytesIO(image_data)).convert('L')
+        w, h = img.size
+        scale = min(1.0, float(max_dim) / max(w, h))
+        if scale < 1.0:
+            img = img.resize((int(w * scale), int(h * scale)), Image.BILINEAR)
+        return np.array(img, dtype=np.float32)
+
+    def _detect_faint_diff(self, diff, sigma_thresh=3.5,
+                           min_n=5, max_n=60, min_lin=0.88,
+                           min_len=6.0, min_density=0.40,
+                           min_conc=0.55):
+        """Find compact linear clusters in a current-minus-past-frame diff."""
+        if not (_HAS_IMGLIB and _HAS_SCIPY):
+            return []
+
+        d = diff - np.median(diff, axis=1, keepdims=True)
+        d = d - np.median(d, axis=0, keepdims=True)
+        pos = np.clip(d, 0, None)
+        valid = pos[pos > 0]
+        if len(valid) < 20:
+            return []
+
+        mu = float(valid.mean())
+        sigma = float(valid.std())
+        if sigma < 1e-6:
+            return []
+
+        mask = (pos > mu + sigma_thresh * sigma).astype(np.int32)
+        labels, n_labels = ndi.label(mask, structure=np.ones((3, 3), dtype=np.int32))
+        if n_labels == 0:
+            return []
+
+        label_ids = np.arange(1, n_labels + 1, dtype=np.int32)
+        sizes = ndi.sum(mask, labels, label_ids).astype(int)
+        valid_ids = label_ids[(sizes >= min_n) & (sizes <= max_n)]
+        if len(valid_ids) == 0:
+            return []
+
+        results = []
+        for lbl in valid_ids:
+            pts = np.argwhere(labels == lbl).astype(np.float32)
+            n = len(pts)
+            ctr = pts.mean(axis=0)
+            c = pts - ctr
+            cov = (c.T @ c) / n
+            ev, evec = np.linalg.eigh(cov)
+            ev0 = max(float(ev[-1]), 1e-9)
+            ev1 = max(float(ev[0]), 1e-9)
+            lin = ev0 / (ev0 + ev1)
+
+            pmaj = c @ evec[:, -1]
+            pmin = c @ evec[:, 0]
+            tlen = float(pmaj.max() - pmaj.min())
+            twid = float(pmin.max() - pmin.min())
+            band = max(3.0, twid * 0.25)
+            conc = float(np.mean(np.abs(pmin) < band))
+            dy, dx = float(evec[0, -1]), float(evec[1, -1])
+            angle = abs(float(np.degrees(np.arctan2(dy, dx)))) % 90
+            density = n / max(tlen, 1.0)
+
+            if (lin >= min_lin and tlen >= min_len and
+                    density >= min_density and conc >= min_conc and
+                    8 < angle < 82):
+                results.append({
+                    'cy': round(float(ctr[0]), 1),
+                    'cx': round(float(ctr[1]), 1),
+                    'n': n,
+                    'lin': round(lin, 3),
+                    'len': round(tlen, 1),
+                    'width': round(twid, 1),
+                    'angle': round(angle, 1),
+                    'density': round(density, 3),
+                    'conc': round(conc, 3),
+                    'score': float(lin * conc * min(1.0, tlen / 30.0)),
+                })
+        return results
+
+    def _detect_faint_realtime(self, image_data, bg_frames, max_dim=600,
+                               sigma_thresh=3.5, max_n=180):
+        """Realtime faint detector: trigger from one high-confidence diff frame."""
+        if not _HAS_IMGLIB:
+            return None, {'detected': False, 'reason': 'numpy/PIL 없음'}
+        if not _HAS_SCIPY:
+            return None, {'detected': False, 'reason': 'scipy 없음'}
+        try:
+            arr = self._load_gray_jpeg(image_data, max_dim=max_dim)
+            if len(bg_frames) < bg_frames.maxlen:
+                return arr, {
+                    'detected': False,
+                    'method': 'faint-diff',
+                    'reason': f'배경 프레임 수집 중 ({len(bg_frames)}/{bg_frames.maxlen})',
+                }
+
+            bg = np.median(np.stack(list(bg_frames), axis=0), axis=0)
+            hits = self._detect_faint_diff(
+                arr - bg, sigma_thresh=sigma_thresh, max_n=max_n)
+            if not hits:
+                return arr, {'detected': False, 'method': 'faint-diff', 'reason': 'faint 후보 없음'}
+
+            best = max(hits, key=lambda h: h.get('score', 0.0))
+            return arr, {
+                'detected': True,
+                'method': 'faint-diff',
+                'detector': 'faint',
+                'linearity': best['lin'],
+                'trail_len_px': best['len'],
+                'trail_width_px': best['width'],
+                'concentration': best['conc'],
+                'angle_deg': best['angle'],
+                'n_bright': best['n'],
+                'density': best['density'],
+                'center_y': best['cy'],
+                'center_x': best['cx'],
+                'faint_sigma': sigma_thresh,
+            }
+        except Exception as e:
+            return None, {'detected': False, 'method': 'faint-diff', 'reason': str(e)}
+
     # ── Scout mode ────────────────────────────────────────────
     def _parse_utc_hhmm(self, time_str):
         """Parse "HH:MM" string into the next absolute UTC datetime."""
@@ -1230,6 +1357,7 @@ class Camera:
             'frame_count':  self._scout_frame_count,
             'detect_count': self._scout_detect_count,
             'last_result':  self._scout_last_result,
+            'has_faint':    bool(_HAS_IMGLIB and _HAS_SCIPY),
             'stop_at':      stop_at_str,
             'params': {
                 'shutter_ms':  active_params.get('shutter_ms',  500),
@@ -1238,6 +1366,9 @@ class Camera:
                 'post_frames': active_params.get('post_frames',  15),
                 'archive':     active_params.get('archive',      False),
                 'bookend':     active_params.get('bookend',      False),
+                'faint':       active_params.get('faint',        True),
+                'faint_sigma': active_params.get('faint_sigma',  3.5),
+                'faint_max_n': active_params.get('faint_max_n',  180),
             },
         }
 
@@ -1347,16 +1478,31 @@ class Camera:
         post_n  = int(self._scout_params.get('post_frames', self._RING_POST))
         archive = bool(self._scout_params.get('archive', False))
         bookend = bool(self._scout_params.get('bookend', False))
+        faint_enabled = bool(self._scout_params.get('faint', True))
+        faint_sigma = float(self._scout_params.get('faint_sigma', 3.5))
+        faint_max_dim = int(self._scout_params.get('faint_max_dim', 600))
+        faint_max_n = int(self._scout_params.get('faint_max_n', 180))
+        faint_buf = int(self._scout_params.get('faint_buf', 4))
         bookend_stop_at = self._scout_stop_at  # capture before it gets cleared
 
         if _HAS_PICAMERA2:
             self._scout_ring_picamera2(shutter_ms, shutter_us, gain, awb,
                                        saturation, sharpness, contrast, quality,
-                                       pre_n, post_n, archive=archive)
+                                       pre_n, post_n, archive=archive,
+                                       faint_enabled=faint_enabled,
+                                       faint_sigma=faint_sigma,
+                                       faint_max_dim=faint_max_dim,
+                                       faint_max_n=faint_max_n,
+                                       faint_buf=faint_buf)
         else:
             self._scout_ring_subprocess(shutter_ms, shutter_us, gain, awb,
                                         saturation, sharpness, contrast, quality,
-                                        pre_n, post_n, archive=archive)
+                                        pre_n, post_n, archive=archive,
+                                        faint_enabled=faint_enabled,
+                                        faint_sigma=faint_sigma,
+                                        faint_max_dim=faint_max_dim,
+                                        faint_max_n=faint_max_n,
+                                        faint_buf=faint_buf)
 
         # ── 북엔드 post-shot ──────────────────────────────────────
         if bookend and bookend_stop_at:
@@ -1381,11 +1527,13 @@ class Camera:
     def _make_scout_worker(self, shutter_ms, shutter_us, gain, awb,
                             saturation, sharpness, contrast, quality,
                             pre_n, post_n, ring, ring_lock, post_ctx, post_lock,
-                            stop_evt):
+                            stop_evt, faint_enabled=True, faint_sigma=3.5,
+                            faint_max_dim=600, faint_max_n=180, faint_buf=4):
         """Return a detection worker function for parallel scout processing."""
 
         def _worker():
             det_q = post_ctx['_det_q']
+            bg_frames = collections.deque(maxlen=max(1, int(faint_buf)))
             while not stop_evt.is_set():
                 try:
                     captured_at, raw, ring_snap, arch_json_path = det_q.get(timeout=0.5)
@@ -1394,6 +1542,22 @@ class Camera:
 
                 try:
                     trail = self.detect_trail(raw)
+                    if (not trail.get('detected')) and faint_enabled:
+                        gray, faint = self._detect_faint_realtime(
+                            raw, bg_frames, max_dim=faint_max_dim,
+                            sigma_thresh=faint_sigma, max_n=faint_max_n)
+                        if gray is not None:
+                            bg_frames.append(gray)
+                        if faint.get('detected'):
+                            trail = faint
+                        else:
+                            trail = {
+                                **trail,
+                                'faint': {
+                                    k: v for k, v in faint.items()
+                                    if k in ('method', 'reason', 'detected')
+                                },
+                            }
                     self._scout_last_result = trail
 
                     if trail.get('detected') and self._scout_enabled:
@@ -1454,7 +1618,9 @@ class Camera:
 
     def _scout_ring_picamera2(self, shutter_ms, shutter_us, gain, awb,
                                saturation, sharpness, contrast, quality,
-                               pre_n, post_n, archive=False):
+                               pre_n, post_n, archive=False,
+                               faint_enabled=True, faint_sigma=3.5,
+                               faint_max_dim=600, faint_max_n=180, faint_buf=4):
         with self._state_lock:
             cam      = self._cam
             prev_cfg = self._preview_config
@@ -1484,7 +1650,10 @@ class Camera:
         worker_fn = self._make_scout_worker(
             shutter_ms, shutter_us, gain, awb,
             saturation, sharpness, contrast, quality,
-            pre_n, post_n, ring, ring_lock, post_ctx, post_lock, stop_evt)
+            pre_n, post_n, ring, ring_lock, post_ctx, post_lock, stop_evt,
+            faint_enabled=faint_enabled, faint_sigma=faint_sigma,
+            faint_max_dim=faint_max_dim, faint_max_n=faint_max_n,
+            faint_buf=faint_buf)
         worker = threading.Thread(target=worker_fn, daemon=True, name='scout-detect')
         worker.start()
 
@@ -1578,7 +1747,9 @@ class Camera:
 
     def _scout_ring_subprocess(self, shutter_ms, shutter_us, gain, awb,
                                 saturation, sharpness, contrast, quality,
-                                pre_n, post_n):
+                                pre_n, post_n, archive=False,
+                                faint_enabled=True, faint_sigma=3.5,
+                                faint_max_dim=600, faint_max_n=180, faint_buf=4):
         """Subprocess fallback with parallel detection worker."""
         ring      = collections.deque(maxlen=pre_n)
         ring_lock = threading.Lock()
@@ -1590,7 +1761,10 @@ class Camera:
         worker_fn = self._make_scout_worker(
             shutter_ms, shutter_us, gain, awb,
             saturation, sharpness, contrast, quality,
-            pre_n, post_n, ring, ring_lock, post_ctx, post_lock, stop_evt)
+            pre_n, post_n, ring, ring_lock, post_ctx, post_lock, stop_evt,
+            faint_enabled=faint_enabled, faint_sigma=faint_sigma,
+            faint_max_dim=faint_max_dim, faint_max_n=faint_max_n,
+            faint_buf=faint_buf)
         worker = threading.Thread(target=worker_fn, daemon=True, name='scout-detect')
         worker.start()
 
@@ -1634,14 +1808,23 @@ class Camera:
                     pr        = post_ctx['remaining']
                     event_tag = post_ctx['event_tag']
 
+                gps_data = (self._scout_gps_callback()
+                            if self._scout_gps_callback else None)
+
+                arch_json_path = None
+                if archive:
+                    _, arch_json_path = self._save_arch_frame(
+                        raw, captured_at, self._scout_frame_count,
+                        shutter_ms, shutter_us, gain, awb,
+                        saturation, sharpness, contrast, quality,
+                        gps_data=gps_data, mount_data=self._scout_mount_data)
+
                 if pr > 0:
                     with post_lock:
                         post_ctx['seq'] += 1
                         seq = post_ctx['seq']
                         post_ctx['remaining'] -= 1
                         remaining_after = post_ctx['remaining']
-                    gps_data = (self._scout_gps_callback()
-                                if self._scout_gps_callback else None)
                     self._save_ring_frame(raw, captured_at, event_tag, seq,
                                          shutter_ms, shutter_us, gain, awb,
                                          saturation, sharpness, contrast, quality,
@@ -1655,7 +1838,7 @@ class Camera:
                         ring.append((captured_at, raw))
                         ring_snap = list(ring)
                     try:
-                        det_q.put_nowait((captured_at, raw, ring_snap))
+                        det_q.put_nowait((captured_at, raw, ring_snap, arch_json_path))
                     except queue.Full:
                         pass
         finally:
