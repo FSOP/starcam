@@ -91,6 +91,17 @@ def _plate_solve_timestamp(meta):
     return None
 
 
+def _response_error_text(exc):
+    resp = getattr(exc, 'response', None)
+    if resp is None:
+        return str(exc)
+    reason = getattr(resp, 'reason', '') or ''
+    text = getattr(resp, 'text', '') or ''
+    if '<html' in text.lower() or '<!doctype' in text.lower():
+        return reason or 'HTML error response'
+    return text[:500] or reason or str(exc)
+
+
 @app.route('/')
 def index():
     return send_from_directory('static', 'index.html')
@@ -695,7 +706,7 @@ def mount_auto_calibrate():
         }), 408
     except Exception as e:
         code = getattr(getattr(e, 'response', None), 'status_code', 500)
-        msg  = getattr(getattr(e, 'response', None), 'text', str(e))
+        msg  = _response_error_text(e)
         return jsonify({
             'ok': False, 'error': f'서버 오류 {code}: {msg}',
             'image': filename, 'source': source,

@@ -3017,14 +3017,14 @@ async function runAutoCalibrate(filename) {
     } else {
       result.innerHTML =
         '<div style="color:var(--err);font-size:12px;padding:8px;background:rgba(255,77,109,.1);border-radius:8px">' +
-        renderCalImage(d) + '✗ ' + (d.error || '실패') + renderCalWarnings(d) + '</div>';
+        renderCalImage(d) + '✗ ' + escapeHtml(d.error || '실패') + renderCalWarnings(d) + '</div>';
     }
   } catch(e) {
     status.style.display = 'none';
     result.style.display = 'block';
     result.innerHTML =
       '<div style="color:var(--err);font-size:12px;padding:8px;background:rgba(255,77,109,.1);border-radius:8px">✗ 통신 오류: ' +
-      e.message + '</div>';
+      escapeHtml(e.message) + '</div>';
   } finally {
     btn.disabled = false;
   }
@@ -3037,13 +3037,19 @@ function renderCalImage(d) {
     'style="display:flex;gap:8px;align-items:center;margin-bottom:8px;color:var(--accent);text-decoration:none">' +
     '<img src="/api/photos/' + u + '/thumb" ' +
     'style="width:64px;height:48px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,.12)">' +
-    '<span style="word-break:break-all">서버 전송 사진<br><b>' + d.image + '</b></span></a>';
+    '<span style="word-break:break-all">서버 전송 사진<br><b>' + escapeHtml(d.image) + '</b></span></a>';
 }
 
 function renderCalWarnings(d) {
   return d && (d.warnings || []).length
-    ? '<div style="margin-top:6px;color:var(--warn)">' + d.warnings.join('<br>') + '</div>'
+    ? '<div style="margin-top:6px;color:var(--warn)">' + d.warnings.map(escapeHtml).join('<br>') + '</div>'
     : '';
+}
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
 }
 
 /* === 촬영 탭 마운트 미니 컨트롤 === */
