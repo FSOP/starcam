@@ -50,11 +50,11 @@ ssh pi 'curl -s http://localhost:5000/api/gps | python3 -m json.tool'
 starcam/
 ├── app.py           # Flask 라우트 + API 엔드포인트
 ├── camera.py        # IMX296 카메라 래퍼 (picamera2 / subprocess 폴백)
-├── gps_reader.py    # pyserial 기반 NMEA 파서 (gpsd 불필요)
+├── gps_reader.py    # gpsd 소켓 클라이언트 (localhost:2947)
 ├── static/
 │   └── index.html   # 단일 페이지 Web UI (촬영 / 갤러리 / GPS 탭)
 ├── CLAUDE.md        # 이 파일 (세션 간 레퍼런스)
-├── requirements.txt # flask, pyserial
+├── requirements.txt # flask, pyserial (gpsd는 시스템 패키지)
 └── .gitignore
 ```
 
@@ -134,31 +134,22 @@ curl -X POST http://localhost:5000/api/photos/download \
 
 ### 핵심 설계 결정
 
-**gpsd 대신 pyserial 직접 사용** — 재부팅 후 gpsd `DEVICES=""` 문제로 연결 안 됨.
-`serial.Serial('/dev/serial0', 9600)` 직접 열어서 NMEA 파싱.
+**gpsd 소켓 클라이언트 사용** — `localhost:2947` JSON 프로토콜로 gpsd에 연결.  
+(과거에는 pyserial 직접 사용했으나, 현재는 gpsd 방식으로 전환됨)
 
 ### 동작 방식
 
 1. `start()` → 백그라운드 스레드 시작
-2. `_find_port()` → `CANDIDATE_PORTS` 순서로 포트 탐색, 데이터 오는 첫 포트 사용
-3. `_read_loop()` → 64바이트씩 읽어서 `\n` 기준으로 NMEA 문장 분리
-4. `_parse()` → `$GNGGA` / `$GNRMC` / `$GNZDA` 파싱
-5. 연결 끊기면 3초 후 재탐색
+2. `localhost:2947`에 소켓 연결 → `?WATCH={"enable":true,"json":true}` 전송
+3. JSON 응답 파싱 (`TPV`: 위치/속도, `SKY`: 위성 정보)
+4. 연결 끊기면 재연결 시도
 
-### 파싱하는 NMEA 문장
+### 파싱하는 gpsd JSON 클래스
 
-| 문장 | 파싱 데이터 |
-|------|------------|
-| `$GNGGA` / `$GPGGA` | 위도, 경도, fix quality, 위성 수, HDOP, 고도, UTC 시각 |
-| `$GNRMC` / `$GPRMC` | 위도, 경도, 속도(knot→km/h), 방위각, UTC 날짜 |
-| `$GNZDA` / `$GPZDA` | UTC 날짜 및 시각 |
-
-### Baud Rate 변경
-
-```python
-gps.set_baud(9600)   # 런타임 변경 — 다음 read에서 자동 적용
-gps.get_baud()       # 현재 baud
-```
+| 클래스 | 파싱 데이터 |
+|--------|------------|
+| `TPV` | 위도, 경도, 고도, 속도, 방위각, UTC 시각, fix mode |
+| `SKY` | 위성 수, HDOP |
 
 ---
 
@@ -166,19 +157,19 @@ gps.get_baud()       # 현재 baud
 
 ### 라즈베리파이 3B UART 매핑
 
-- `/dev/serial0` → `ttyS0` (mini UART, GPIO 14/15) — **GPS 연결**
+- `/dev/serial0` → `ttyS0` (mini UART, GPIO 14/15) — **GPS 연결 (gpsd가 관리)**
 - `ttyAMA1` (PL011 full UART) → Bluetooth 내부 사용
 - `enable_uart=1` in `/boot/firmware/config.txt`
 
-### raw NMEA 확인
+### gpsd 상태 확인
 
 ```bash
+# gpsd 동작 확인
+ssh pi 'gpspipe -w -n 5'
+
+# raw NMEA 직접 확인 (gpsd 중지 후)
 stty -F /dev/serial0 9600 && timeout 5 cat /dev/serial0
 ```
-
-### gpsd 관련 (현재 미사용)
-
-gpsd는 설치되어 있으나 `DEVICES=""` 상태로 미사용. 앱은 pyserial 직접 사용.
 
 ---
 
@@ -343,8 +334,8 @@ ssh pi 'cat ~/photos/star_20260517_105030_123_001.json | python3 -m json.tool'
 
 | 이슈 | 원인 | 해결 |
 |------|------|------|
-| 재부팅 후 GPS 연결 안됨 | gpsd `DEVICES=""` | pyserial 직접 사용으로 전환 완료 |
+| 재부팅 후 GPS 연결 안됨 | gpsd `DEVICES=""` | gpsd 소켓 방식으로 전환 완료 |
 | GPS baud rate 변경 | 앱에서 실시간 변경 불가 | `/api/gps/baud` POST로 변경 가능 |
-| sudo 필요한 작업 | `/etc/default/gpsd` 수정 등 | 앱 레벨에서 우회 (pyserial) |
+| sudo 필요한 작업 | `/etc/default/gpsd` 수정 등 | gpsd 소켓으로 우회 |
 | 연속 촬영 간 SD카드 지연 | SD 쓰기 속도 느림 | RAM 버퍼 2-phase capture로 해결 |
 | `pkill` + 재시작 스크립트 exit 255 | pkill이 프로세스 없으면 exit 1 반환 | 두 명령을 별도 ssh 호출로 분리 |
