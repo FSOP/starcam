@@ -576,7 +576,8 @@ class Camera:
     # ── Metadata ──────────────────────────────────────────────────
     def _save_sidecar(self, filepath, captured_at, shutter_ms, shutter_us,
                       gain, awb, saturation, sharpness, contrast, quality,
-                      seq, total, interval, gps_data, mount_data=None):
+                      seq, total, interval, gps_data, mount_data=None,
+                      extra_meta=None):
         utc_offset = datetime.now() - datetime.utcnow()
         captured_at_utc = captured_at - utc_offset
         metadata = {
@@ -596,6 +597,8 @@ class Camera:
             metadata['gps'] = dict(gps_data)
         if mount_data:
             metadata['mount'] = dict(mount_data)
+        if extra_meta:
+            metadata.update(extra_meta)
         with open(filepath.replace('.jpg', '.json'), 'w') as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
         return bool(gps_data)
@@ -612,16 +615,18 @@ class Camera:
             pass  # 이미 해제됐으면 무시
 
     # ── Capture ───────────────────────────────────────────────────
-    def capture(self, params, gps_data=None, suffix='', mount_data=None):
+    def capture(self, params, gps_data=None, suffix='', mount_data=None,
+                extra_meta=None):
         if not self._capture_mutex.acquire(blocking=False):
             return {'saved': [], 'count': 0, 'gps_saved': False,
                     'error': '촬영 중입니다. 잠시 후 다시 시도하세요'}
         try:
-            return self._do_capture(params, gps_data, suffix, mount_data)
+            return self._do_capture(params, gps_data, suffix, mount_data, extra_meta)
         finally:
             self._capture_mutex.release()
 
-    def _do_capture(self, params, gps_data=None, suffix="", mount_data=None):
+    def _do_capture(self, params, gps_data=None, suffix="", mount_data=None,
+                    extra_meta=None):
         shutter_ms  = float(params.get('shutter_ms') or params.get('shutter', 5000))
         gain        = float(params.get('gain',       8))
         awb         =       params.get('awb',        'auto')
@@ -639,7 +644,8 @@ class Camera:
         os.makedirs(PHOTOS_DIR, exist_ok=True)
         shutter_us = int(shutter_ms * 1000)
         args = (shutter_ms, shutter_us, gain, awb, count, interval,
-                saturation, sharpness, contrast, quality, gps_data, mount_data)
+                saturation, sharpness, contrast, quality, gps_data, mount_data,
+                extra_meta)
 
         if _HAS_PICAMERA2:
             with self._state_lock:
@@ -653,7 +659,8 @@ class Camera:
             return self._capture_subprocess(*args, suffix=suffix)
 
     def _capture_picamera2(self, cam, prev_cfg, shutter_ms, shutter_us, gain, awb,
-                           count, interval, saturation, sharpness, contrast, quality, gps_data, mount_data=None, suffix=""):
+                           count, interval, saturation, sharpness, contrast, quality,
+                           gps_data, mount_data=None, extra_meta=None, suffix=""):
         controls = {
             "ExposureTime": shutter_us, "AnalogueGain": float(gain),
             "Saturation": float(saturation), "Sharpness": float(sharpness),
@@ -719,7 +726,7 @@ class Camera:
                 gps_saved |= self._save_sidecar(
                     filepath, captured_at, shutter_ms, shutter_us,
                     gain, awb, saturation, sharpness, contrast, quality,
-                    seq, count, interval, gps_data, mount_data,
+                    seq, count, interval, gps_data, mount_data, extra_meta,
                 )
             except Exception as e:
                 last_error = str(e)
@@ -728,7 +735,8 @@ class Camera:
                 'error': last_error if not saved else None}
 
     def _capture_subprocess(self, shutter_ms, shutter_us, gain, awb,
-                            count, interval, saturation, sharpness, contrast, quality, gps_data, mount_data=None, suffix=""):
+                            count, interval, saturation, sharpness, contrast, quality,
+                            gps_data, mount_data=None, extra_meta=None, suffix=""):
         saved, gps_saved, last_error = [], False, None
         self._capturing = True
         self._wait_preview_stop()
@@ -780,7 +788,7 @@ class Camera:
                 gps_saved |= self._save_sidecar(
                     filepath, captured_at, shutter_ms, shutter_us,
                     gain, awb, saturation, sharpness, contrast, quality,
-                    seq, count, interval, gps_data, mount_data,
+                    seq, count, interval, gps_data, mount_data, extra_meta,
                 )
             except Exception as e:
                 last_error = str(e)

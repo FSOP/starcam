@@ -24,6 +24,7 @@ gps = GPSReader()
 mount_ctrl = MountController()
 
 MOUNT_CFG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mount_config.json")
+SCHEDULE_HISTORY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schedule_history.json")
 _MOUNT_CFG_DEFAULTS = {
     "az_offset": 0.0, "el_offset": 0.0,
     "el_min": None, "el_max": None,
@@ -60,6 +61,18 @@ _mount_cache = None  # last known az/el, updated on every status poll
 
 def _get_mount_snap():
     return _mount_cache
+
+
+def _utc_now_iso():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def _public_schedule_job(job):
+    return {
+        k: v for k, v in job.items()
+        if not k.startswith('_') and k != 'utc_dt'
+    }
 
 
 def _valid_photo_name(filename):
@@ -828,6 +841,51 @@ from datetime import datetime, timezone as _tz, timedelta as _td
 
 _scheduled_jobs = {}   # id → job dict
 _sched_lock     = _threading.Lock()
+_schedule_history_lock = _threading.Lock()
+
+def _load_schedule_history():
+    try:
+        with open(SCHEDULE_HISTORY_PATH, encoding='utf-8') as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _append_schedule_history(job, event, **extra):
+    entry = {
+        'event': event,
+        'at': _utc_now_iso(),
+        'job': _public_schedule_job(job),
+    }
+    if extra:
+        entry.update(extra)
+    try:
+        with _schedule_history_lock:
+            history = _load_schedule_history()
+            history.append(entry)
+            history = history[-200:]
+            tmp = SCHEDULE_HISTORY_PATH + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(history, f, indent=2, ensure_ascii=False)
+            os.replace(tmp, SCHEDULE_HISTORY_PATH)
+    except Exception as e:
+        print(f'[schedule] history write failed: {e}', flush=True)
+
+
+def _schedule_sidecar_meta(job):
+    return {
+        'schedule': {
+            'id': job['id'],
+            'target_utc': job['utc_iso'],
+            'created_at': job.get('created_at'),
+            'lead_secs': job.get('lead_secs'),
+            'az': job.get('az'),
+            'el': job.get('el'),
+            'camera_off_after': job.get('camera_off_after'),
+            'params': job.get('params', {}),
+        }
+    }
 
 def _run_scheduled_job(job):
     try:
@@ -836,6 +894,7 @@ def _run_scheduled_job(job):
         # 1. Camera warmup
         job['status'] = 'warming'
         job['status_msg'] = '카메라 워밍업 중…'
+        _append_schedule_history(job, 'warming')
         if not camera.is_enabled():
             job['_camera_was_off'] = True
             camera.set_enabled(True)
@@ -845,6 +904,7 @@ def _run_scheduled_job(job):
         if job.get('az') is not None and job.get('el') is not None:
             job['status'] = 'goto'
             job['status_msg'] = f"GOTO AZ {job['az']:.1f}° EL {job['el']:.1f}°"
+            _append_schedule_history(job, 'goto_start')
             cfg    = _load_mount_cfg()
             az_off = cfg.get('az_offset') or 0.0
             el_off = cfg.get('el_offset') or 0.0
@@ -854,7 +914,10 @@ def _run_scheduled_job(job):
             if not res.get('ok'):
                 job['status']     = 'error'
                 job['status_msg'] = 'goto 실패: ' + (res.get('error') or '?')
+                job['error']      = job['status_msg']
+                _append_schedule_history(job, 'error', response=res)
                 return
+            _append_schedule_history(job, 'goto_done', response=res)
 
         # 3. Wait until target time
         import time as _time
@@ -863,29 +926,38 @@ def _run_scheduled_job(job):
         if wait > 0:
             job['status']     = 'waiting'
             job['status_msg'] = f'{wait:.0f}초 대기 중…'
+            _append_schedule_history(job, 'waiting', wait_s=round(wait, 3))
             _time.sleep(wait)
 
         # 4. Capture
         if job['status'] == 'cancelled':
+            _append_schedule_history(job, 'cancelled_before_capture')
             return
         job['status']     = 'capturing'
         job['status_msg'] = '촬영 중…'
+        _append_schedule_history(job, 'capturing')
         gps_data = gps.get_fix()
-        cap_res  = camera.capture(job['params'], gps_data, mount_data=_get_mount_snap())
+        cap_res  = camera.capture(
+            job['params'], gps_data, mount_data=_get_mount_snap(),
+            extra_meta=_schedule_sidecar_meta(job))
         saved_n  = len(cap_res.get('saved') or [])
         job['status']     = 'done'
         job['result']     = cap_res
         job['status_msg'] = f'{saved_n}장 저장됨' + (' · 오류: ' + cap_res['error'] if cap_res.get('error') and not saved_n else '')
+        _append_schedule_history(job, 'done', result=cap_res)
 
         # 5. Camera off
         if job.get('camera_off_after', True):
             _time.sleep(1)
             camera.set_enabled(False)
             job['status_msg'] += ' · 카메라 꺼짐'
+            _append_schedule_history(job, 'camera_off')
 
     except Exception as e:
         job['status']     = 'error'
         job['status_msg'] = '오류: ' + str(e)
+        job['error']      = str(e)
+        _append_schedule_history(job, 'error', error=str(e))
 
 
 def _scheduler_loop():
@@ -899,6 +971,8 @@ def _scheduler_loop():
             lead = _td(seconds=job.get('lead_secs', 90))
             if now >= job['utc_dt'] - lead:
                 job['status'] = 'warming'   # claim before thread starts
+                job['status_msg'] = '카메라 워밍업 준비 중…'
+                _append_schedule_history(job, 'claimed')
                 _threading.Thread(target=_run_scheduled_job, args=(job,), daemon=True).start()
 
 _threading.Thread(target=_scheduler_loop, daemon=True, name='scheduler').start()
@@ -908,10 +982,14 @@ _threading.Thread(target=_scheduler_loop, daemon=True, name='scheduler').start()
 def schedule_list():
     with _sched_lock:
         jobs = sorted(_scheduled_jobs.values(), key=lambda x: x['utc_iso'])
-    return jsonify([
-        {k: v for k, v in j.items() if not k.startswith('_') and k != 'utc_dt'}
-        for j in jobs
-    ])
+    return jsonify([_public_schedule_job(j) for j in jobs])
+
+
+@app.route('/api/schedule/history', methods=['GET'])
+def schedule_history():
+    limit = int(request.args.get('limit', 100))
+    limit = max(1, min(limit, 200))
+    return jsonify(_load_schedule_history()[-limit:])
 
 
 @app.route('/api/schedule', methods=['POST'])
@@ -950,6 +1028,7 @@ def schedule_add():
     }
     with _sched_lock:
         _scheduled_jobs[job_id] = job
+    _append_schedule_history(job, 'created')
     return jsonify({'ok': True, 'id': job_id, 'utc_iso': job['utc_iso']})
 
 
@@ -963,6 +1042,7 @@ def schedule_cancel(job_id):
         return jsonify({'ok': False, 'error': f'취소 불가 (상태: {job["status"]})'}), 400
     job['status']     = 'cancelled'
     job['status_msg'] = '취소됨'
+    _append_schedule_history(job, 'cancelled')
     return jsonify({'ok': True})
 
 

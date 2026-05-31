@@ -5,3 +5,4 @@ __pycache__/
 .env
 *.log
 mount_config.json
+schedule_history.json
